@@ -118,6 +118,10 @@ export interface VolumeVsTokens {
   volume_change_pct?: number;
   tokens_change_pct?: number;
   note?: string;
+  /** Dollar attribution of the cost change (recent 7d vs prior window). */
+  volume_effect_usd?: number;
+  token_intensity_effect_usd?: number;
+  mix_effect_usd?: number;
   [k: string]: unknown;
 }
 
@@ -131,18 +135,27 @@ export interface ExpensiveWorkflow {
 }
 
 export interface Recommendation {
+  type?: string;
+  title?: string;
   action: string;
+  explanation?: string;
   est_savings_usd_mo: number;
   confidence: string;
-  post_change_margin_usd: number;
+  post_change_margin_usd?: number | null;
+  disclaimer?: string;
+  detail?: Record<string, unknown>;
 }
 
 export interface DemoInvestigateResponse {
   summary: string;
+  tenant_name?: string;
+  margin_usd?: number | null;
   drivers: { by_model: CostBreakdownItem[]; by_app: CostBreakdownItem[] };
   volume_vs_tokens: VolumeVsTokens;
   expensive_workflows: ExpensiveWorkflow[];
-  recommendation: Recommendation;
+  recommendation: Recommendation | null;
+  recommendations?: Recommendation[];
+  disclaimer?: string;
   data_label: "demo" | "customer";
 }
 
@@ -214,15 +227,32 @@ function normalizeInvestigateResponse(raw: DemoInvestigateResponse): Investigate
         volume_change_pct: vol != null ? num(vol) : undefined,
         tokens_change_pct: tok != null ? num(tok) : undefined,
         note: note != null ? String(note) : undefined,
+        volume_effect_usd:
+          vvt.volume_effect_usd != null ? num(vvt.volume_effect_usd) : undefined,
+        token_intensity_effect_usd:
+          vvt.token_intensity_effect_usd != null ? num(vvt.token_intensity_effect_usd) : undefined,
+        mix_effect_usd: vvt.mix_effect_usd != null ? num(vvt.mix_effect_usd) : undefined,
       };
     })(),
-    recommendation: {
-      ...raw.recommendation,
-      est_savings_usd_mo: num(raw.recommendation.est_savings_usd_mo),
-      post_change_margin_usd: num(raw.recommendation.post_change_margin_usd),
-      // Backend sends lowercase ("medium"); display title case ("Medium").
-      confidence: raw.recommendation.confidence.replace(/\b\w/g, (c) => c.toUpperCase()),
-    },
+    recommendation: normalizeRecommendation(raw.recommendation),
+    recommendations: (raw.recommendations ?? [])
+      .map(normalizeRecommendation)
+      .filter((r): r is Recommendation => r !== null),
+  };
+}
+
+function normalizeRecommendation(
+  rec: Recommendation | null | undefined
+): Recommendation | null {
+  if (!rec) return null;
+  const num = (v: unknown): number => Number(v);
+  return {
+    ...rec,
+    est_savings_usd_mo: num(rec.est_savings_usd_mo),
+    post_change_margin_usd:
+      rec.post_change_margin_usd != null ? num(rec.post_change_margin_usd) : null,
+    // Backend sends lowercase ("medium"); display title case ("Medium").
+    confidence: (rec.confidence ?? "").replace(/\b\w/g, (c) => c.toUpperCase()),
   };
 }
 

@@ -144,7 +144,7 @@ class TestCalibration:
         assert top.from_model == "gpt-4.1" and top.to_model == "gpt-4.1-mini"
         assert _pct_within(top.est_savings_usd_mo, Decimal("140")), \
             f"savings={top.est_savings_usd_mo}"
-        assert top.confidence == "medium"
+        assert top.confidence == "high"  # 64.8k requests > 1k
 
     def test_seed_is_deterministic(self, seeded):
         """Re-seeding after reset yields the same tenant totals (seeded RNG)."""

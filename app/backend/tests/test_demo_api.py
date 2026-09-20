@@ -109,7 +109,7 @@ class TestDemoInvestigate:
                                 json={"tenant_external_id": "cust-a"}).json()
         rec = body["recommendation"]
         assert _pct_within(rec["est_savings_usd_mo"], 140), rec
-        assert rec["confidence"] == "medium"
+        assert rec["confidence"] == "high"  # 64.8k requests > 1k
         # Post-change margin = current margin + estimated savings (an estimate,
         # never a guarantee). Assert the relationship, not a hardcoded number.
         margin = Decimal(str(pnl["cust-a"]["margin_usd"]))
@@ -128,7 +128,7 @@ class TestDemoInvestigate:
         assert "spend." in s
         assert "could potentially reduce AI cost by" in s
         assert "Estimated post-change margin" in s
-        assert "Confidence: Medium" in s
+        assert "Confidence: High" in s  # 64.8k requests > 1k
 
     def test_volume_growth_detected(self, demo_client):
         body = demo_client.post("/api/v1/demo/investigate",

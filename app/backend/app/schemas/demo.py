@@ -57,14 +57,24 @@ class VolumeVsTokens(BaseModel):
     requests_delta_pct: float
     avg_tokens_per_request_delta_pct: float
     window_note: str = "last 7 days vs prior 23 days"
+    # Dollar attribution of the cost change (recent 7d vs prior window):
+    # request-count change alone, tokens/request change alone, and the
+    # residual model/price-mix effect. None when there is no prior window.
+    volume_effect_usd: Decimal | None = None
+    token_intensity_effect_usd: Decimal | None = None
+    mix_effect_usd: Decimal | None = None
 
 
 class RecommendationOut(BaseModel):
+    type: str = "model_routing"  # model_routing | prompt_caching | anomaly_followup
+    title: str = ""
     action: str
+    explanation: str = ""
     est_savings_usd_mo: Decimal
     confidence: str = Field(pattern="^(high|medium|low)$")
-    post_change_margin_usd: Decimal
+    post_change_margin_usd: Decimal | None = None
     detail: dict = {}
+    disclaimer: str = "Estimates are not guarantees."
 
 
 class InvestigateResponse(BaseModel):
@@ -72,7 +82,10 @@ class InvestigateResponse(BaseModel):
     tenant_external_id: str
     tenant_name: str
     summary: str
+    margin_usd: Decimal | None = None
     drivers: Drivers
     volume_vs_tokens: VolumeVsTokens
     expensive_workflows: list[ExpensiveWorkflow]
     recommendation: RecommendationOut | None
+    recommendations: list[RecommendationOut] = []
+    disclaimer: str = "Estimates are not guarantees."

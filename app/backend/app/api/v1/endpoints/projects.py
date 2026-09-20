@@ -27,6 +27,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -37,7 +38,7 @@ from app.schemas import api_keys as key_schemas
 from app.schemas import projects as schemas
 from app.services import anomalies as anomalies_service
 from app.services.dashboard import compute_dashboard
-from app.services.investigate import TenantNotFoundError, investigate_tenant
+from app.services.investigate import TenantNotFoundError, explain_investigation, investigate_tenant
 from app.services.pnl import compute_pnl
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -134,6 +135,54 @@ def project_investigate(project_id: str, payload: schemas.ProjectInvestigateRequ
     except TenantNotFoundError:
         raise HTTPException(status_code=404, detail="tenant not found")
     return schemas.ProjectInvestigateResponse(**result)
+
+
+@router.get("/{project_id}/investigate", response_model=schemas.ProjectInvestigateResponse)
+def project_investigate_get(project_id: str, tenant: str = Query(min_length=1),
+                            days: int = Query(default=30, ge=1, le=365),
+                            user: m.User = Depends(deps.get_current_user),
+                            db: Session = Depends(get_db)):
+    """GET variant of investigate — same deterministic engine as POST."""
+    project = deps.get_org_project(db, user, project_id)
+    try:
+        result = investigate_tenant(db, user.org_id, project.id, tenant, days=days)
+    except TenantNotFoundError:
+        raise HTTPException(status_code=404, detail="tenant not found")
+    return schemas.ProjectInvestigateResponse(**result)
+
+
+class InvestigateExplainRequest(BaseModel):
+    tenant_external_id: str = Field(min_length=1)
+    days: int = Field(default=30, ge=1, le=365)
+
+
+class InvestigateExplainResponse(BaseModel):
+    data_label: str = "customer"
+    tenant_external_id: str
+    narrative: str
+    # "template" (deterministic, always available) or "llm" (optional rewording
+    # of the template — the LLM never invents numbers).
+    narrative_source: str = Field(pattern="^(template|llm)$")
+
+
+@router.post("/{project_id}/investigate/explain", response_model=InvestigateExplainResponse)
+def project_investigate_explain(project_id: str, payload: InvestigateExplainRequest,
+                                user: m.User = Depends(deps.get_current_user),
+                                db: Session = Depends(get_db)):
+    """Narrative explanation of the deterministic investigation facts.
+
+    Template prose by default; if NARRATIVE_LLM_API_KEY is configured the
+    template may be reworded by the LLM (facts in, prose out — the LLM never
+    computes or invents numbers). Any polish failure falls back to template.
+    """
+    project = deps.get_org_project(db, user, project_id)
+    try:
+        result = explain_investigation(db, user.org_id, project.id,
+                                       payload.tenant_external_id, days=payload.days)
+    except TenantNotFoundError:
+        raise HTTPException(status_code=404, detail="tenant not found")
+    return InvestigateExplainResponse(
+        tenant_external_id=payload.tenant_external_id, **result)
 
 
 @router.get("/{project_id}/dashboard", response_model=schemas.ProjectDashboardResponse)

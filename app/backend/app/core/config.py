@@ -33,6 +33,11 @@ class Settings:
         o.strip() for o in _get("CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()))
     demo_namespace: str = field(default_factory=lambda: _get("DEMO_NAMESPACE", "ai-cost-doctor-demo"))
     environment: str = field(default_factory=lambda: _get("ENVIRONMENT", "development"))
+    # Optional narrative polish for /investigate/explain. Unset by default:
+    # the template narrative is always used unless a key is provided.
+    narrative_llm_api_key: str = field(default_factory=lambda: _get("NARRATIVE_LLM_API_KEY", ""))
+    narrative_llm_model: str = field(default_factory=lambda: _get("NARRATIVE_LLM_MODEL", "gpt-4o-mini"))
+    narrative_llm_base_url: str = field(default_factory=lambda: _get("NARRATIVE_LLM_BASE_URL", "https://api.openai.com/v1"))
 
 
 settings = Settings()

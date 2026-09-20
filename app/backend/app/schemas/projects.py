@@ -40,8 +40,7 @@ class ProjectInvestigateRequest(BaseModel):
 
 
 class CustomerRecommendationOut(RecommendationOut):
-    # post_change_margin_usd is None when the tenant has no recorded revenue.
-    post_change_margin_usd: Decimal | None
+    """Customer variant — post_change_margin_usd is None without revenue."""
 
 
 class ProjectInvestigateResponse(BaseModel):
@@ -49,10 +48,13 @@ class ProjectInvestigateResponse(BaseModel):
     tenant_external_id: str
     tenant_name: str
     summary: str
+    margin_usd: Decimal | None = None
     drivers: Drivers
     volume_vs_tokens: VolumeVsTokens
     expensive_workflows: list[ExpensiveWorkflow]
     recommendation: CustomerRecommendationOut | None
+    recommendations: list[CustomerRecommendationOut] = []
+    disclaimer: str = "Estimates are not guarantees."
 
 
 class DashboardTrendPoint(BaseModel):

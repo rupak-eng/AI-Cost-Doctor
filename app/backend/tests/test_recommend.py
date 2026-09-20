@@ -27,7 +27,7 @@ class TestModelRouting:
         opp = opps[0]
         assert opp.to_model == "gpt-4.1-mini"
         assert opp.est_savings_usd_mo == Decimal("140.00")
-        assert opp.confidence == "medium"  # 64.8k requests > 10k
+        assert opp.confidence == "high"  # 64.8k requests > 1k
 
     def test_shiftable_share_is_applied(self):
         opps = model_routing_opportunity([_pair()], _catalog(), shiftable_share=Decimal("1.0"))
@@ -58,17 +58,33 @@ class TestModelRouting:
         assert all(o.to_model != "claude-3-5-haiku-20241022" for o in opps)
         assert all(o.from_provider == "openai" for o in opps)
 
-    def test_confidence_low_for_small_volume(self):
+    def test_confidence_high_for_large_volume(self):
         pair = _pair(requests=9_999, input_tokens=9_999 * 1500, output_tokens=9_999 * 300,
+                     cost_usd=Decimal("60"))
+        opps = model_routing_opportunity([pair], _catalog())
+        assert opps[0].confidence == "high"
+
+    def test_confidence_medium_for_moderate_volume(self):
+        pair = _pair(requests=500, input_tokens=500 * 1500, output_tokens=500 * 300,
+                     cost_usd=Decimal("60"))
+        opps = model_routing_opportunity([pair], _catalog())
+        assert opps[0].confidence == "medium"
+
+    def test_confidence_low_for_small_volume(self):
+        pair = _pair(requests=50, input_tokens=50 * 1500, output_tokens=50 * 300,
                      cost_usd=Decimal("60"))
         opps = model_routing_opportunity([pair], _catalog())
         assert opps[0].confidence == "low"
 
-    def test_confidence_boundary(self):
+    def test_confidence_boundaries(self):
         assert model_routing_opportunity(
-            [_pair(requests=10_001)], _catalog())[0].confidence == "medium"
+            [_pair(requests=1_001)], _catalog())[0].confidence == "high"
         assert model_routing_opportunity(
-            [_pair(requests=10_000)], _catalog())[0].confidence == "low"
+            [_pair(requests=1_000)], _catalog())[0].confidence == "medium"
+        assert model_routing_opportunity(
+            [_pair(requests=101)], _catalog())[0].confidence == "medium"
+        assert model_routing_opportunity(
+            [_pair(requests=100)], _catalog())[0].confidence == "low"
 
     def test_sorted_by_savings_desc(self):
         big = _pair(cost_usd=Decimal("350"))
