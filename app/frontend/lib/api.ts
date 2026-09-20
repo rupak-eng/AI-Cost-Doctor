@@ -687,3 +687,79 @@ export async function acknowledgeAnomaly(
   );
   return normalizeAnomaly(raw);
 }
+
+/* ------------------------------------------------------------------ */
+/* Billing (Phase 8)                                                   */
+/* ------------------------------------------------------------------ */
+
+export type PlanName = "free" | "starter" | "growth";
+
+export interface PlanLimits {
+  display_name: string;
+  monthly_price_usd: number;
+  max_projects: number;
+  events_per_month: number;
+  retention_days: number;
+}
+
+export interface BillingStatus {
+  plan: PlanName;
+  effective_plan: PlanName;
+  subscription_status: string | null;
+  trial_active: boolean;
+  trial_days_left: number | null;
+  trial_ends_at: string | null;
+  has_paid_access: boolean;
+  stripe_customer_id: string | null;
+  limits: PlanLimits;
+  projects_count: number;
+  events_this_month: number;
+  events_over_limit: boolean;
+  stripe_configured: boolean;
+  data_label: string;
+}
+
+export interface CheckoutResponse {
+  url: string;
+  session_id: string;
+  reused: boolean;
+}
+
+export interface PortalResponse {
+  url: string;
+}
+
+export const PLAN_CATALOG: Record<Exclude<PlanName, "free">, {
+  name: string;
+  price: string;
+  blurb: string;
+  features: string[];
+}> = {
+  starter: {
+    name: "Starter",
+    price: "$49/mo",
+    blurb: "For a single product getting AI spend under control.",
+    features: ["1 project", "1M events / month", "30-day retention", "Tenant P&L & margin killers", "Anomaly alerts"],
+  },
+  growth: {
+    name: "Growth",
+    price: "$199/mo",
+    blurb: "For teams scaling AI across products and customers.",
+    features: ["5 projects", "10M events / month", "12-month retention", "Everything in Starter", "Priority support"],
+  },
+};
+
+export async function fetchBillingStatus(): Promise<BillingStatus> {
+  return apiFetch<BillingStatus>("/billing/status");
+}
+
+export async function createCheckoutSession(plan: Exclude<PlanName, "free">): Promise<CheckoutResponse> {
+  return apiFetch<CheckoutResponse>("/billing/checkout", {
+    method: "POST",
+    body: JSON.stringify({ plan }),
+  });
+}
+
+export async function createPortalSession(): Promise<PortalResponse> {
+  return apiFetch<PortalResponse>("/billing/portal", { method: "POST" });
+}

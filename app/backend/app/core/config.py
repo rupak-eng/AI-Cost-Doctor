@@ -38,6 +38,15 @@ class Settings:
     narrative_llm_api_key: str = field(default_factory=lambda: _get("NARRATIVE_LLM_API_KEY", ""))
     narrative_llm_model: str = field(default_factory=lambda: _get("NARRATIVE_LLM_MODEL", "gpt-4o-mini"))
     narrative_llm_base_url: str = field(default_factory=lambda: _get("NARRATIVE_LLM_BASE_URL", "https://api.openai.com/v1"))
+    # --- Billing (Stripe) ---------------------------------------------------
+    # All billing secrets live in env only: never in the DB, logs, or API
+    # responses. Prices are created in the Stripe Dashboard; only the Price
+    # IDs travel via env so catalog changes don't need a deploy.
+    stripe_secret_key: str = field(default_factory=lambda: _get("STRIPE_SECRET_KEY", ""))
+    stripe_webhook_secret: str = field(default_factory=lambda: _get("STRIPE_WEBHOOK_SECRET", ""))
+    stripe_price_starter: str = field(default_factory=lambda: _get("STRIPE_PRICE_STARTER", ""))
+    stripe_price_growth: str = field(default_factory=lambda: _get("STRIPE_PRICE_GROWTH", ""))
+    frontend_url: str = field(default_factory=lambda: _get("FRONTEND_URL", "http://localhost:3000"))
 
 
 settings = Settings()

@@ -37,6 +37,7 @@ from app.core.db import get_db
 from app.schemas import api_keys as key_schemas
 from app.schemas import projects as schemas
 from app.services import anomalies as anomalies_service
+from app.services import billing
 from app.services.dashboard import compute_dashboard
 from app.services.investigate import TenantNotFoundError, explain_investigation, investigate_tenant
 from app.services.pnl import compute_pnl
@@ -84,6 +85,21 @@ def create_api_key(project_id: str, payload: key_schemas.ApiKeyCreateRequest,
     return key_schemas.ApiKeyCreated(
         id=key.id, name=key.name, key_prefix=key.key_prefix,
         api_key=raw, created_at=key.created_at)
+
+
+@router.post("", response_model=schemas.ProjectOut, status_code=status.HTTP_201_CREATED)
+def create_project(payload: schemas.ProjectCreateRequest,
+                   user: m.User = Depends(deps.get_current_user),
+                   db: Session = Depends(get_db)):
+    """Create an additional project. Gated by the plan's project cap
+    (free/starter: 1, growth: 5) — 402 when the org is at its limit."""
+    billing.check_project_limit(user, db)
+    project = m.Project(org_id=user.org_id, name=payload.name.strip())
+    db.add(project)
+    db.flush()
+    db.commit()
+    return schemas.ProjectOut(id=project.id, name=project.name,
+                              created_at=project.created_at)
 
 
 @router.get("/{project_id}/api-keys", response_model=list[key_schemas.ApiKeyOut])
@@ -222,6 +238,8 @@ def project_anomalies(project_id: str,
     if days not in (7, 30, 90):
         raise HTTPException(
             status_code=400, detail="days must be one of 7, 30, 90")
+    # Paid feature: the anomaly feed requires an active trial or paid plan.
+    billing.require_paid_feature(user, db, "anomaly_reads")
     project = deps.get_org_project(db, user, project_id)
     result = anomalies_service.list_anomalies(db, user.org_id, project.id, days=days)
     db.commit()

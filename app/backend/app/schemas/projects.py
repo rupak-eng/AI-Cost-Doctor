@@ -30,6 +30,17 @@ class ProjectPnLRow(BaseModel):
     status: str = Field(pattern="^(margin_killer|at_risk|healthy|unknown)$")
 
 
+class ProjectCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+
+class ProjectOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    created_at: datetime
+    data_label: str = "customer"
+
+
 class ProjectPnLResponse(BaseModel):
     data_label: str = "customer"
     tenants: list[ProjectPnLRow]

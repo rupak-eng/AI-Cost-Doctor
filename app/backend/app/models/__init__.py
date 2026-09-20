@@ -65,6 +65,17 @@ class Organization(Base):
     slug: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
     plan: Mapped[str] = mapped_column(Text, nullable=False, default="free")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=_now())
+    # --- Billing (Phase 8) -------------------------------------------------
+    # Trial is time-based and cardless: modeled as a timestamp, not a Stripe
+    # object, so no Stripe objects exist during trial. NULL = no trial
+    # (e.g. orgs created before Phase 8) → plain free tier.
+    trial_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    stripe_customer_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    stripe_subscription_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    stripe_pending_session_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Stripe subscription status: trialing|active|past_due|canceled|...
+    # NULL = never subscribed.
+    subscription_status: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     users: Mapped[list["User"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
     projects: Mapped[list["Project"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
@@ -327,3 +338,20 @@ class AuditLog(Base):
     target_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=_now())
     ip: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class StripeWebhookEvent(Base):
+    """Processed Stripe webhook event IDs — Stripe redelivers, so we dedupe.
+
+    Intentionally RLS-exempt (like model_prices): event IDs (evt_...) are not
+    sensitive and carry no org data by themselves; org_id is informational.
+    """
+
+    __tablename__ = "stripe_webhook_events"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    event_id: Mapped[str] = mapped_column(Text, unique=True, nullable=False)  # evt_...
+    event_type: Mapped[str] = mapped_column(Text, nullable=False)
+    org_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=_now())

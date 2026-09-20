@@ -24,6 +24,7 @@ from app import models as m
 from app.api.v1 import deps
 from app.core.db import get_db
 from app.schemas import providers as schemas
+from app.services import billing
 from app.services.providers import anthropic as anthropic_mod
 from app.services.providers import openai as openai_mod
 from app.services.providers.base import ProviderError
@@ -117,6 +118,8 @@ def sync_now(cred_id: str, body: schemas.ProviderSyncRequest,
              project_id: str = Query(...),
              user: m.User = Depends(deps.get_current_user),
              db: Session = Depends(get_db)):
+    # Paid feature: provider sync requires an active trial or paid plan.
+    billing.require_paid_feature(user, db, "provider_sync")
     cred = _get_cred(db, user, cred_id)
     project = deps.get_org_project(db, user, project_id)
     try:

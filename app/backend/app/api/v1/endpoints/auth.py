@@ -28,12 +28,19 @@ from app.core.security import (
     verify_password,
 )
 from app.schemas import auth as schemas
+from app.services import billing
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _as_aware(dt: datetime) -> datetime:
+    """SQLite returns datetimes offset-naive; interpret naive as UTC so
+    comparisons with aware datetimes work on both backends."""
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
 
 
 def _slugify(name: str) -> str:
@@ -75,6 +82,8 @@ def signup(payload: schemas.SignupRequest, request: Request, db: Session = Depen
     db.add(org)
     db.flush()  # org.id needed for RLS scoping below
     deps.set_rls_org(db, org.id)
+    # Phase 8: every signup starts a 14-day cardless trial (full features).
+    billing.start_trial(org)
 
     user = m.User(organization=org, email=email, password_hash=hash_password(payload.password), role="owner")
     db.add(user)
@@ -125,7 +134,7 @@ def refresh(payload: schemas.RefreshRequest, db: Session = Depends(get_db)):
     digest = hash_refresh_token(payload.refresh_token)
     with deps.pre_auth_lookup(db):
         stored = db.query(m.RefreshToken).filter_by(token_hash=digest).first()
-    if stored is None or stored.revoked_at is not None or stored.expires_at <= _utcnow():
+    if stored is None or stored.revoked_at is not None or _as_aware(stored.expires_at) <= _utcnow():
         raise HTTPException(status_code=401, detail="invalid or expired refresh token")
     deps.set_rls_org(db, stored.org_id)
     stored = db.get(m.RefreshToken, stored.id)  # re-load under org policy

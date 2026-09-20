@@ -10,6 +10,7 @@ const NAV = [
   { label: "Overview", href: "/app" },
   { label: "Customer P&L", href: "/app/pnl" },
   { label: "Connect", href: "/app/connect" },
+  { label: "Billing", href: "/app/billing" },
   { label: "Investigate", comingSoon: true },
   { label: "Savings", comingSoon: true },
   { label: "Settings", comingSoon: true },

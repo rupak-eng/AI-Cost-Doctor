@@ -8,9 +8,11 @@ import AnomaliesFeed from "../../components/anomalies-feed";
 import { ApiErrorNotice, CostBar, LiveDataCaption, SkeletonCard } from "../../components/ui";
 import {
   AnomaliesResponse,
+  BillingStatus,
   DashboardDays,
   DashboardResponse,
   PnlResponse,
+  fetchBillingStatus,
   fetchProjectAnomalies,
   fetchProjectDashboard,
   fetchProjectPnl,
@@ -99,6 +101,7 @@ export default function OverviewPage() {
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [pnl, setPnl] = useState<PnlResponse | null>(null);
   const [anomalies, setAnomalies] = useState<AnomaliesResponse | null>(null);
+  const [billing, setBilling] = useState<BillingStatus | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -128,6 +131,12 @@ export default function OverviewPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projects.loading, projectId, days]);
 
+  useEffect(() => {
+    if (!projects.loading) {
+      fetchBillingStatus().then(setBilling).catch(() => setBilling(null));
+    }
+  }, [projects.loading]);
+
   const busy = projects.loading || loading;
   const empty = !busy && !error && data && data.total_requests === 0;
 
@@ -145,8 +154,25 @@ export default function OverviewPage() {
     });
   }, []);
 
+  const showTrialBanner =
+    billing !== null &&
+    billing.trial_active &&
+    billing.trial_days_left !== null &&
+    billing.trial_days_left <= 7;
+
   return (
     <div>
+      {showTrialBanner && (
+        <div className="mb-6 rounded-xl border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-900">
+          <span className="font-semibold">Free trial ending soon:</span>{" "}
+          {billing!.trial_days_left} {billing!.trial_days_left === 1 ? "day" : "days"}{" "}
+          left with full access.{" "}
+          <Link href="/app/billing" className="font-semibold underline hover:no-underline">
+            Choose a plan
+          </Link>{" "}
+          to keep provider sync and anomaly alerts running.
+        </div>
+      )}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-3">
