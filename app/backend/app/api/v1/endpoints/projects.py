@@ -8,6 +8,13 @@
   POST   /projects/{project_id}/investigate         root-cause facts
   GET    /projects/{project_id}/dashboard?days=30  spend overview
                                                     (7, 30, or 90 days)
+  GET    /projects/{project_id}/anomalies?days=30   deterministic anomaly
+                                                    feed (refresh-on-read),
+                                                    severity-ordered +
+                                                    unread_count
+  POST   /projects/{project_id}/anomalies/{id}/acknowledge
+                                                    mark an anomaly
+                                                    acknowledged
 
 All responses carry "data_label": "customer". Every lookup is org-scoped
 (explicit org check + RLS); cross-org access → 404.
@@ -28,6 +35,7 @@ from app.api.v1 import deps
 from app.core.db import get_db
 from app.schemas import api_keys as key_schemas
 from app.schemas import projects as schemas
+from app.services import anomalies as anomalies_service
 from app.services.dashboard import compute_dashboard
 from app.services.investigate import TenantNotFoundError, investigate_tenant
 from app.services.pnl import compute_pnl
@@ -145,3 +153,48 @@ def project_dashboard(project_id: str,
     project = deps.get_org_project(db, user, project_id)
     data = compute_dashboard(db, user.org_id, project.id, days=days)
     return schemas.ProjectDashboardResponse(**data)
+
+
+@router.get("/{project_id}/anomalies", response_model=schemas.ProjectAnomaliesResponse)
+def project_anomalies(project_id: str,
+                      days: int = Query(default=30, ge=1, le=90),
+                      user: m.User = Depends(deps.get_current_user),
+                      db: Session = Depends(get_db)):
+    """Anomaly feed for a project, severity-ordered with an unread badge count.
+
+    Refresh-on-read: the deterministic detectors run on every call and upsert
+    idempotently (fingerprint dedupe), so the feed is always current without
+    a background scheduler. The detection write is committed here — without
+    a commit the request-scoped session would roll back and dedupe could
+    never work across requests. Every figure derives from
+    usage_events.cost_calculated_usd — reported/estimated costs are never
+    inputs.
+    """
+    if days not in (7, 30, 90):
+        raise HTTPException(
+            status_code=400, detail="days must be one of 7, 30, 90")
+    project = deps.get_org_project(db, user, project_id)
+    result = anomalies_service.list_anomalies(db, user.org_id, project.id, days=days)
+    db.commit()
+    return schemas.ProjectAnomaliesResponse(**result)
+
+
+@router.post("/{project_id}/anomalies/{anomaly_id}/acknowledge",
+             response_model=schemas.AnomalyOut)
+def acknowledge_project_anomaly(project_id: str, anomaly_id: str,
+                                user: m.User = Depends(deps.get_current_user),
+                                db: Session = Depends(get_db)):
+    """Mark an anomaly acknowledged. Cross-org ids → 404 (no existence leak)."""
+    project = deps.get_org_project(db, user, project_id)
+    try:
+        aid = uuid.UUID(str(anomaly_id))
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=404, detail="anomaly not found")
+    row = anomalies_service.acknowledge_anomaly(db, user.org_id, project.id, aid)
+    if row is None:
+        raise HTTPException(status_code=404, detail="anomaly not found")
+    db.commit()
+    tenant_names = {t.external_id: t.name for t in
+                    db.query(m.Tenant).filter_by(org_id=user.org_id,
+                                                 project_id=project.id).all()}
+    return schemas.AnomalyOut(**anomalies_service.anomaly_to_dict(row, tenant_names))

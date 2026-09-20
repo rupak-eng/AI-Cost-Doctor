@@ -4,11 +4,14 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import OverviewEmptyState from "../../components/overview-empty-state";
 import ProjectSelector from "../../components/project-selector";
+import AnomaliesFeed from "../../components/anomalies-feed";
 import { ApiErrorNotice, CostBar, LiveDataCaption, SkeletonCard } from "../../components/ui";
 import {
+  AnomaliesResponse,
   DashboardDays,
   DashboardResponse,
   PnlResponse,
+  fetchProjectAnomalies,
   fetchProjectDashboard,
   fetchProjectPnl,
   formatUsd,
@@ -95,6 +98,7 @@ export default function OverviewPage() {
   const [days, setDays] = useState<DashboardDays>(30);
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [pnl, setPnl] = useState<PnlResponse | null>(null);
+  const [anomalies, setAnomalies] = useState<AnomaliesResponse | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -105,10 +109,15 @@ export default function OverviewPage() {
     }
     setLoading(true);
     setError(null);
-    Promise.all([fetchProjectDashboard(projectId, days), fetchProjectPnl(projectId)])
-      .then(([d, p]) => {
+    Promise.all([
+      fetchProjectDashboard(projectId, days),
+      fetchProjectPnl(projectId),
+      fetchProjectAnomalies(projectId, days),
+    ])
+      .then(([d, p, a]) => {
         setData(d);
         setPnl(p);
+        setAnomalies(a);
       })
       .catch((e: unknown) => setError(e instanceof Error ? e : new Error("Couldn't load the dashboard.")))
       .finally(() => setLoading(false));
@@ -121,6 +130,20 @@ export default function OverviewPage() {
 
   const busy = projects.loading || loading;
   const empty = !busy && !error && data && data.total_requests === 0;
+
+  const handleAcknowledged = useCallback((id: string) => {
+    setAnomalies((prev) => {
+      if (!prev) return prev;
+      const anomalies = prev.anomalies.map((a) =>
+        a.id === id ? { ...a, status: "acknowledged" as const } : a
+      );
+      return {
+        ...prev,
+        anomalies,
+        unread_count: anomalies.filter((a) => a.status === "open").length,
+      };
+    });
+  }, []);
 
   return (
     <div>
@@ -173,6 +196,16 @@ export default function OverviewPage() {
       {!busy && !error && !empty && data && (
         <div className="space-y-6">
           {pnl && <MarginKillerBanner pnl={pnl} />}
+
+          {projectId && anomalies && (
+            <AnomaliesFeed
+              projectId={projectId}
+              anomalies={anomalies.anomalies}
+              unreadCount={anomalies.unread_count}
+              days={anomalies.days}
+              onAcknowledged={handleAcknowledged}
+            />
+          )}
 
           <div className="grid gap-6 md:grid-cols-4">
             {[

@@ -266,7 +266,13 @@ class CostAnomaly(Base):
     change_pct: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
     abs_delta_usd: Mapped[Decimal | None] = mapped_column(COST, nullable=True)
     severity: Mapped[str] = mapped_column(Text, nullable=False, default="info")  # info|warning|critical
-    status: Mapped[str] = mapped_column(Text, nullable=False, default="open")  # open|investigated|resolved|dismissed
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="open")  # open|investigated|resolved|dismissed|acknowledged
+    # Which deterministic detector produced this row (Phase 6):
+    # spend_spike | new_expensive_model | margin_killer_emergence
+    detector: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Idempotency key — refresh-on-read detection never inserts twice for
+    # the same fingerprint while a non-terminal row exists.
+    fingerprint: Mapped[str | None] = mapped_column(Text, nullable=True)
     evidence: Mapped[dict] = mapped_column(JsonType, nullable=False, default=dict)
 
 

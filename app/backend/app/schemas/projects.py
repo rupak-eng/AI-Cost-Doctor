@@ -7,6 +7,7 @@ Sub-schemas are shared with the demo module — the engine output is identical.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, Field
@@ -93,3 +94,34 @@ class ProjectDashboardResponse(BaseModel):
     by_model: list[DashboardModelRow]
     by_application: list[DashboardApplicationRow]
     top_tenants: list[DashboardTenantRow]
+
+
+# ---------------------------------------------------------------------------
+# Anomaly detection (Phase 6)
+# ---------------------------------------------------------------------------
+
+class AnomalyOut(BaseModel):
+    id: uuid.UUID
+    detector: str | None  # spend_spike | new_expensive_model | margin_killer_emergence
+    dimension: str  # overall | tenant
+    dimension_value: str | None
+    tenant_name: str | None
+    severity: str  # critical | warning | info
+    status: str  # open | acknowledged | investigated | resolved | dismissed
+    detected_at: datetime
+    baseline_usd: Decimal | None
+    observed_usd: Decimal | None
+    change_pct: Decimal | None
+    abs_delta_usd: Decimal | None
+    title: str
+    detail: str
+    evidence: dict
+    # Deep-link target: tenant investigate page (None for project-wide).
+    investigate_tenant_external_id: str | None
+
+
+class ProjectAnomaliesResponse(BaseModel):
+    data_label: str = "customer"
+    days: int
+    anomalies: list[AnomalyOut]
+    unread_count: int

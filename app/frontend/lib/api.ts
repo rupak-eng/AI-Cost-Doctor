@@ -590,3 +590,70 @@ export async function fetchProjectDashboard(
   );
   return normalizeDashboardResponse(raw);
 }
+
+// ---------------------------------------------------------------------------
+// Anomaly detection (Phase 6)
+// ---------------------------------------------------------------------------
+
+export type AnomalyDetector = "spend_spike" | "new_expensive_model" | "margin_killer_emergence";
+export type AnomalySeverity = "critical" | "warning" | "info";
+export type AnomalyStatus = "open" | "acknowledged" | "investigated" | "resolved" | "dismissed";
+
+export interface Anomaly {
+  id: string;
+  detector: AnomalyDetector | null;
+  dimension: string;
+  dimension_value: string | null;
+  tenant_name: string | null;
+  severity: AnomalySeverity;
+  status: AnomalyStatus;
+  detected_at: string;
+  baseline_usd: number | null;
+  observed_usd: number | null;
+  change_pct: number | null;
+  abs_delta_usd: number | null;
+  title: string;
+  detail: string;
+  evidence: Record<string, unknown>;
+  investigate_tenant_external_id: string | null;
+}
+
+export interface AnomaliesResponse {
+  data_label: "customer";
+  days: number;
+  anomalies: Anomaly[];
+  unread_count: number;
+}
+
+/** Backend serializes Decimals as strings; normalize to numbers at the boundary. */
+function normalizeAnomaly(raw: Anomaly): Anomaly {
+  const num = (v: unknown): number | null => (v == null ? null : Number(v));
+  return {
+    ...raw,
+    baseline_usd: num(raw.baseline_usd),
+    observed_usd: num(raw.observed_usd),
+    change_pct: num(raw.change_pct),
+    abs_delta_usd: num(raw.abs_delta_usd),
+  };
+}
+
+export async function fetchProjectAnomalies(
+  projectId: string,
+  days: DashboardDays = 30
+): Promise<AnomaliesResponse> {
+  const raw = await apiFetch<AnomaliesResponse>(
+    `/projects/${projectId}/anomalies?days=${days}`
+  );
+  return { ...raw, anomalies: raw.anomalies.map(normalizeAnomaly) };
+}
+
+export async function acknowledgeAnomaly(
+  projectId: string,
+  anomalyId: string
+): Promise<Anomaly> {
+  const raw = await apiFetch<Anomaly>(
+    `/projects/${projectId}/anomalies/${anomalyId}/acknowledge`,
+    { method: "POST" }
+  );
+  return normalizeAnomaly(raw);
+}
