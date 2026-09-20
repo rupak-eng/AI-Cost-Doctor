@@ -149,6 +149,38 @@ class ProviderCredential(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=_now())
 
 
+class ProviderCostReport(Base):
+    """Provider-reported cost buckets, kept SEPARATE from usage events.
+
+    Rationale: neither OpenAI's /organization/costs nor Anthropic's
+    /cost_report breaks reported dollars down by model, so reported cost
+    cannot be joined to per-model token rows without inventing an
+    allocation. These rows are org-level reconciliation evidence
+    ("the provider says $X for this bucket"); per-model economics always
+    come from usage_events.cost_calculated_usd (deterministic catalog math).
+    """
+
+    __tablename__ = "provider_cost_reports"
+    __table_args__ = (
+        Index("ix_provider_cost_reports_org_time", "org_id", "bucket_start"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    provider: Mapped[str] = mapped_column(Text, nullable=False)  # openai|anthropic
+    bucket_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    bucket_width: Mapped[str] = mapped_column(Text, nullable=False, default="1d")
+    # Grouping key as reported by the provider: OpenAI line_item,
+    # Anthropic description. Stored verbatim — never parsed for models.
+    group_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    amount_usd: Mapped[Decimal] = mapped_column(COST, nullable=False)
+    currency: Mapped[str] = mapped_column(String(8), nullable=False, default="usd")
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=_now())
+    # Raw provider result object, for debugging shape drift in provider APIs.
+    meta: Mapped[dict] = mapped_column("metadata", JsonType, nullable=False, default=dict)
+
+
 class ApiKey(Base):
     """Per-project event-ingest keys. Stored as SHA-256 hash ONLY."""
 

@@ -8,10 +8,17 @@ import {
   ApiKeyCreated,
   ApiKeyInfo,
   CsvUploadResponse,
+  ProviderCredentialInfo,
+  ProviderName,
+  ProviderSyncSummary,
+  connectProvider,
   createApiKey,
+  disconnectProvider,
   formatUsd,
   listApiKeys,
+  listProviderCredentials,
   revokeApiKey,
+  syncProvider,
   uploadCsv,
 } from "../../../lib/api";
 import { useProjects } from "../../../lib/project";
@@ -673,6 +680,280 @@ function CsvUploadSection({ projectId }: { projectId: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// Provider integrations section (Phase 4: OpenAI + Anthropic usage sync)
+// ---------------------------------------------------------------------------
+
+const PROVIDER_LABELS: Record<ProviderName, string> = {
+  openai: "OpenAI",
+  anthropic: "Anthropic",
+};
+
+function ProviderSection({ projectId }: { projectId: string }) {
+  const [creds, setCreds] = useState<ProviderCredentialInfo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+  const [provider, setProvider] = useState<ProviderName>("openai");
+  const [apiKey, setApiKey] = useState("");
+  const [label, setLabel] = useState("");
+  const [connecting, setConnecting] = useState(false);
+  const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [daysBack, setDaysBack] = useState("30");
+  const [lastSummary, setLastSummary] = useState<ProviderSyncSummary | null>(null);
+  const [confirmDisconnectId, setConfirmDisconnectId] = useState<string | null>(null);
+
+  const load = () => {
+    setLoading(true);
+    setError(null);
+    listProviderCredentials()
+      .then(setCreds)
+      .catch(setError)
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleConnect = async () => {
+    const key = apiKey.trim();
+    if (!key || connecting) return;
+    setConnecting(true);
+    setError(null);
+    try {
+      await connectProvider(provider, key, label.trim() || null);
+      setLabel("");
+      load();
+    } catch (e) {
+      setError(e instanceof Error ? e : new Error("Couldn't connect the provider."));
+    } finally {
+      // Never retain the submitted key — clear the field either way.
+      setApiKey("");
+      setConnecting(false);
+    }
+  };
+
+  const handleSync = async (cred: ProviderCredentialInfo) => {
+    const days = Math.max(1, Math.min(90, Number(daysBack) || 30));
+    setSyncingId(cred.id);
+    setError(null);
+    setLastSummary(null);
+    try {
+      const summary = await syncProvider(cred.id, projectId, days);
+      setLastSummary(summary);
+      load();
+    } catch (e) {
+      setError(e instanceof Error ? e : new Error("Sync failed."));
+    } finally {
+      setSyncingId(null);
+    }
+  };
+
+  const handleDisconnect = async (credId: string) => {
+    setError(null);
+    try {
+      await disconnectProvider(credId);
+      setConfirmDisconnectId(null);
+      load();
+    } catch (e) {
+      setError(e instanceof Error ? e : new Error("Couldn't disconnect the provider."));
+    }
+  };
+
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-6 md:p-8">
+      <h2 className="text-xl font-bold tracking-tight text-slate-900">
+        Provider integrations
+      </h2>
+      <p className="mt-2 max-w-3xl text-sm text-slate-600">
+        Pull usage directly from your AI providers. Usage is priced with our
+        deterministic price catalog; provider-reported totals are stored
+        separately and are never allocated to models or customers.
+      </p>
+      <div className="mt-3 max-w-3xl rounded-lg border border-amber-300 bg-amber-50 p-4">
+        <p className="text-sm font-semibold text-amber-900">
+          An Admin API key is required.
+        </p>
+        <p className="mt-1 text-sm text-amber-800">
+          Usage endpoints are admin-only: a regular project API key will be
+          rejected. Create one in your provider&apos;s admin console (OpenAI:
+          organization admin key · Anthropic: Console admin key), paste it once,
+          and we&apos;ll validate it before storing anything. Keys are encrypted
+          at rest and never shown again — only the last 4 characters are kept
+          for identification.
+        </p>
+      </div>
+
+      {/* Connect form */}
+      <div className="mt-6">
+        <h3 className="text-sm font-semibold text-slate-900">Connect a provider</h3>
+        <div className="mt-2 flex max-w-2xl flex-wrap items-end gap-2">
+          <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+            Provider
+            <select
+              value={provider}
+              onChange={(e) => setProvider(e.target.value as ProviderName)}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+            >
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic</option>
+            </select>
+          </label>
+          <label className="flex flex-1 flex-col gap-1 text-xs font-medium text-slate-600">
+            Admin API key
+            <input
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleConnect();
+              }}
+              placeholder="Paste once — never stored or shown again"
+              autoComplete="off"
+              className="rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm text-slate-900 placeholder:font-sans placeholder:text-slate-400"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+            Label <span className="font-normal text-slate-400">(optional)</span>
+            <input
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="e.g. production"
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400"
+            />
+          </label>
+          <button
+            onClick={handleConnect}
+            disabled={connecting || !apiKey.trim()}
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {connecting ? "Validating…" : "Connect"}
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="mt-4">
+          <ApiErrorNotice error={error} onRetry={load} />
+        </div>
+      )}
+
+      {/* Connection list */}
+      <div className="mt-6">
+        <h3 className="text-sm font-semibold text-slate-900">Connected providers</h3>
+        {loading && <p className="mt-2 text-sm text-slate-500">Loading connections…</p>}
+        {!loading && creds.length === 0 && (
+          <p className="mt-2 text-sm text-slate-500">
+            No providers connected yet. Connect one above to start syncing usage.
+          </p>
+        )}
+        {!loading && creds.length > 0 && (
+          <ul className="mt-3 space-y-3">
+            {creds.map((cred) => (
+              <li
+                key={cred.id}
+                className="rounded-lg border border-slate-200 p-4"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">
+                      {PROVIDER_LABELS[cred.provider]}
+                      {cred.label && (
+                        <span className="ml-2 font-normal text-slate-500">
+                          {cred.label}
+                        </span>
+                      )}
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      Key ····{cred.key_last4} ·{" "}
+                      {cred.status === "active" ? (
+                        <span className="font-medium text-emerald-700">active</span>
+                      ) : (
+                        <span className="font-medium text-red-700">
+                          error{cred.last_error ? `: ${cred.last_error}` : ""}
+                        </span>
+                      )}
+                      {cred.last_sync_at && (
+                        <> · last synced {fmtDate(cred.last_sync_at)}</>
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="flex items-center gap-1 text-xs text-slate-500">
+                      Days
+                      <input
+                        value={daysBack}
+                        onChange={(e) => setDaysBack(e.target.value)}
+                        inputMode="numeric"
+                        className="w-16 rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-900"
+                      />
+                    </label>
+                    <button
+                      onClick={() => handleSync(cred)}
+                      disabled={syncingId === cred.id}
+                      className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {syncingId === cred.id ? "Syncing…" : "Sync now"}
+                    </button>
+                    {confirmDisconnectId === cred.id ? (
+                      <>
+                        <button
+                          onClick={() => handleDisconnect(cred.id)}
+                          className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-700"
+                        >
+                          Confirm disconnect
+                        </button>
+                        <button
+                          onClick={() => setConfirmDisconnectId(null)}
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmDisconnectId(cred.id)}
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        Disconnect
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* Sync result */}
+      {lastSummary && (
+        <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+          <p className="text-sm font-semibold text-emerald-900">
+            Sync complete ✓ — {lastSummary.events_written.toLocaleString()} usage
+            events written.
+          </p>
+          {lastSummary.unpriced_models.length > 0 && (
+            <p className="mt-1 text-sm text-emerald-800">
+              These models have no price in our catalog, so their cost is left
+              blank rather than guessed: {lastSummary.unpriced_models.join(", ")}.
+            </p>
+          )}
+          <div className="mt-3">
+            <Link
+              href="/app/pnl"
+              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+            >
+              View your Customer P&L →
+            </Link>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -708,6 +989,7 @@ export default function ConnectPage() {
 
       {!projects.error && projectId && (
         <div className="space-y-8">
+          <ProviderSection key={`providers-${projectId}`} projectId={projectId} />
           <EventApiSection key={`events-${projectId}`} projectId={projectId} />
           <CsvUploadSection key={`csv-${projectId}`} projectId={projectId} />
         </div>

@@ -448,3 +448,75 @@ export async function uploadCsv(
     })),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Provider integrations (Phase 4: OpenAI + Anthropic usage sync)
+// ---------------------------------------------------------------------------
+
+export type ProviderName = "openai" | "anthropic";
+
+export interface ProviderCredentialInfo {
+  id: string;
+  provider: ProviderName;
+  label: string | null;
+  key_last4: string;
+  status: "active" | "error";
+  last_sync_at: string | null;
+  last_error: string | null;
+  created_at: string;
+}
+
+export interface ProviderSyncSummary {
+  credential_id: string;
+  provider: ProviderName;
+  project_id: string;
+  days_back: number;
+  events_written: number;
+  cost_reports_written: number;
+  unpriced_models: string[];
+}
+
+export interface ProviderSyncStatus {
+  id: string;
+  provider: ProviderName;
+  status: "active" | "error";
+  last_sync_at: string | null;
+  last_error: string | null;
+}
+
+/** Validate + store a provider Admin API key. The key is never returned or retained. */
+export async function connectProvider(
+  provider: ProviderName,
+  apiKey: string,
+  label?: string | null
+): Promise<ProviderCredentialInfo> {
+  return apiFetch<ProviderCredentialInfo>("/integrations/providers", {
+    method: "POST",
+    body: JSON.stringify({ provider, api_key: apiKey, label: label ?? null }),
+  });
+}
+
+export async function listProviderCredentials(): Promise<ProviderCredentialInfo[]> {
+  return apiFetch<ProviderCredentialInfo[]>("/integrations/providers");
+}
+
+export async function disconnectProvider(credentialId: string): Promise<void> {
+  await apiFetch<void>(`/integrations/providers/${credentialId}`, { method: "DELETE" });
+}
+
+export async function syncProvider(
+  credentialId: string,
+  projectId: string,
+  daysBack: number
+): Promise<ProviderSyncSummary> {
+  return apiFetch<ProviderSyncSummary>(
+    `/integrations/providers/${credentialId}/sync?project_id=${encodeURIComponent(projectId)}`,
+    { method: "POST", body: JSON.stringify({ days_back: daysBack }) }
+  );
+}
+
+export async function getProviderSyncStatus(
+  credentialId: string
+): Promise<ProviderSyncStatus> {
+  return apiFetch<ProviderSyncStatus>(`/integrations/providers/${credentialId}/sync-status`);
+}
