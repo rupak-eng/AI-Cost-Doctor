@@ -153,3 +153,49 @@ def ensure_catalog_in_db(db, catalog: list[Price] | None = None) -> int:
         added += 1
     db.flush()
     return added
+
+
+def load_catalog_from_db(db) -> list[Price]:
+    """Load the pricing catalog from the model_prices table (runtime source
+    of truth — reflects catalog overrides, unlike the static JSON file)."""
+    from app import models as m  # deferred to avoid import cycles
+
+    rows = (
+        db.query(m.ModelPrice)
+        .order_by(m.ModelPrice.provider, m.ModelPrice.model, m.ModelPrice.effective_from)
+        .all()
+    )
+    return [
+        Price(
+            provider=r.provider,
+            model=r.model,
+            input_usd_per_1m=Decimal(r.input_usd_per_1m),
+            output_usd_per_1m=Decimal(r.output_usd_per_1m),
+            cached_input_usd_per_1m=(Decimal(r.cached_input_usd_per_1m)
+                                     if r.cached_input_usd_per_1m is not None else None),
+            reasoning_usd_per_1m=(Decimal(r.reasoning_usd_per_1m)
+                                  if r.reasoning_usd_per_1m is not None else None),
+            effective_from=r.effective_from,
+            effective_to=r.effective_to,
+            source=r.source,
+        )
+        for r in rows
+    ]
+
+
+def price_event(catalog: list[Price], *, provider: str, model: str, at: datetime | date,
+                input_tokens: int, output_tokens: int,
+                cached_input_tokens: int = 0, reasoning_tokens: int = 0) -> Decimal | None:
+    """Calculated cost for one event-like payload, or None when the catalog
+    has no price for (provider, model) at `at`.
+
+    Callers surface None as missing data (stored NULL / counted unpriced) —
+    we never invent a price.
+    """
+    try:
+        price = price_for(catalog, provider=provider, model=model, at=at)
+        return event_cost(
+            input_tokens=input_tokens, output_tokens=output_tokens, price=price,
+            cached_input_tokens=cached_input_tokens, reasoning_tokens=reasoning_tokens)
+    except PriceNotFoundError:
+        return None

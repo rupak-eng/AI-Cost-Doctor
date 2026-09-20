@@ -7,17 +7,27 @@ import { useAuth } from "../../lib/auth";
 import { cn } from "../../components/cn";
 
 const NAV = [
-  { label: "Overview", href: "/app", section: "overview" },
-  { label: "Customer P&L", href: "/app/pnl", section: "pnl" },
-  { label: "Investigate", href: "/app/investigate", section: "investigate" },
-  { label: "Savings", href: "/app/savings", section: "savings" },
-  { label: "Settings", href: "/app/settings", section: "settings" },
+  { label: "Overview", href: "/app" },
+  { label: "Customer P&L", href: "/app/pnl" },
+  { label: "Connect", href: "/app/connect" },
+  { label: "Investigate", comingSoon: true },
+  { label: "Savings", comingSoon: true },
+  { label: "Settings", comingSoon: true },
 ];
+
+const PLACEHOLDERS: Record<string, { title: string; section: string }> = {
+  "/app/investigate": { title: "Investigate", section: "cost diagnosis" },
+  "/app/savings": { title: "Savings", section: "savings recommendations" },
+  "/app/settings": { title: "Settings", section: "settings" },
+};
 
 function Placeholder({ title, section }: { title: string; section: string }) {
   return (
     <div className="rounded-xl border border-dashed border-slate-300 bg-white p-12 text-center">
-      <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+      <div className="mx-auto inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500 ring-1 ring-inset ring-slate-600/10">
+        Coming soon
+      </div>
+      <h2 className="mt-4 text-lg font-semibold text-slate-900">{title}</h2>
       <p className="mx-auto mt-2 max-w-md text-sm text-slate-600">
         This section is coming in a later phase. Connect your AI stack first — then
         your {section} will show up here.
@@ -44,22 +54,30 @@ function OverviewEmptyState() {
             title: "OpenAI + Anthropic",
             body: "Connect provider usage APIs directly. Coming in Phase 4.",
             tag: "Coming soon",
+            href: null,
           },
           {
             title: "CSV upload",
-            body: "Drop in a billing export with guided column mapping and a dry-run preview. Coming in Phase 3.",
-            tag: "Coming soon",
+            body: "Drop in a billing export with guided column mapping and a dry-run preview.",
+            tag: "Available now",
+            href: "/app/connect",
           },
           {
             title: "Event API",
-            body: "POST usage events with a per-project API key. Coming in Phase 3.",
-            tag: "Coming soon",
+            body: "POST usage events with a per-project API key.",
+            tag: "Available now",
+            href: "/app/connect",
           },
         ].map((c) => (
           <div key={c.title} className="rounded-lg border border-slate-200 p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{c.tag}</p>
             <h3 className="mt-1 font-semibold text-slate-900">{c.title}</h3>
             <p className="mt-1 text-sm text-slate-600">{c.body}</p>
+            {c.href && (
+              <Link href={c.href} className="mt-2 inline-block text-sm font-semibold text-indigo-600 hover:text-indigo-800">
+                Go to Connect →
+              </Link>
+            )}
           </div>
         ))}
       </div>
@@ -106,11 +124,25 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
         <nav className="flex-1 space-y-1 p-4">
           {NAV.map((item) => {
+            if ("comingSoon" in item && item.comingSoon) {
+              return (
+                <span
+                  key={item.label}
+                  className="flex cursor-not-allowed items-center justify-between rounded-lg px-3 py-2 text-sm font-medium text-slate-400"
+                  title="Coming in a later phase"
+                >
+                  {item.label}
+                  <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 ring-1 ring-inset ring-slate-600/10">
+                    Soon
+                  </span>
+                </span>
+              );
+            }
             const active = pathname === item.href;
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                href={item.href!}
                 className={cn(
                   "block rounded-lg px-3 py-2 text-sm font-medium",
                   active ? "bg-indigo-50 text-indigo-700" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
@@ -145,14 +177,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 <OverviewEmptyState />
               </div>
             </>
-          ) : pathname === "/app/pnl" ? (
-            <Placeholder title="Customer P&L" section="per-customer P&L" />
-          ) : pathname === "/app/investigate" ? (
-            <Placeholder title="Investigate" section="cost diagnosis" />
-          ) : pathname === "/app/savings" ? (
-            <Placeholder title="Savings" section="savings recommendations" />
-          ) : pathname === "/app/settings" ? (
-            <Placeholder title="Settings" section="settings" />
+          ) : PLACEHOLDERS[pathname] ? (
+            <Placeholder
+              title={PLACEHOLDERS[pathname].title}
+              section={PLACEHOLDERS[pathname].section}
+            />
           ) : (
             children
           )}

@@ -4,12 +4,14 @@ const STATUS_STYLES: Record<string, string> = {
   margin_killer: "bg-red-50 text-red-700 ring-red-600/20",
   at_risk: "bg-amber-50 text-amber-700 ring-amber-600/25",
   healthy: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
+  unknown: "bg-slate-100 text-slate-600 ring-slate-600/20",
 };
 
 const STATUS_LABELS: Record<string, string> = {
   margin_killer: "Margin Killer",
   at_risk: "At Risk",
   healthy: "Healthy",
+  unknown: "Unknown",
 };
 
 /** Required on every demo view and demo data card. */
@@ -23,6 +25,21 @@ export function DemoBadge({ className }: { className?: string }) {
       title="This view uses labeled synthetic data computed by the same cost engine as real data."
     >
       Demo data
+    </span>
+  );
+}
+
+/** Neutral caption marking views backed by the customer's own connected data. */
+export function LiveDataCaption({ className }: { className?: string }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600 ring-1 ring-inset ring-slate-600/10",
+        className
+      )}
+      title="Computed from your connected usage data by the AI Cost Doctor cost engine."
+    >
+      Live data
     </span>
   );
 }

@@ -9,16 +9,20 @@ Row-Level Security bootstrap:
   (and `refresh_tokens`) RLS policies explicitly allow for email/hash
   resolution only. The flag is transaction-local and cleared on commit; the
   real org context is set immediately after the org is resolved/created.
+- Project API-key resolution (event ingest): same pattern — the key's
+  SHA-256 hash is looked up under the bootstrap flag (migration 003 extends
+  the api_keys policy for reads only), then the real org context is set.
 - Demo endpoints: public, but the demo org has a deterministic UUID, so we
   set app.org_id to it directly — RLS still applies, no bypass.
 """
 from __future__ import annotations
 
+import hashlib
 import uuid
 from contextlib import contextmanager
 
 import jwt as pyjwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -96,4 +100,50 @@ def get_demo_project(db: Session, org: m.Organization) -> m.Project:
     project = db.query(m.Project).filter_by(org_id=org.id).order_by(m.Project.created_at).first()
     if project is None:
         raise HTTPException(status_code=404, detail="demo project missing")
+    return project
+
+
+def _invalid_key() -> HTTPException:
+    return HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                         detail="invalid or revoked API key")
+
+
+def resolve_api_key(
+    db: Session = Depends(get_db),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+) -> m.ApiKey:
+    """Resolve a project ingest key from the X-API-Key header (no JWT).
+
+    The presented secret is SHA-256 hashed and looked up under the narrow
+    pre-auth bootstrap flag (migration 003) — the plaintext secret never
+    touches a query. Unknown or revoked keys → 401. On success the real org
+    context is pinned and the key re-loaded under the org RLS policy.
+    """
+    if not x_api_key:
+        raise _invalid_key()
+    digest = hashlib.sha256(x_api_key.encode("utf-8")).hexdigest()
+    with pre_auth_lookup(db):
+        key = db.query(m.ApiKey).filter_by(key_hash=digest).first()
+    if key is None or key.revoked_at is not None:
+        raise _invalid_key()
+    set_rls_org(db, key.org_id)
+    key = db.get(m.ApiKey, key.id)  # re-load under the org policy
+    if key is None or key.revoked_at is not None:
+        raise _invalid_key()
+    return key
+
+
+def get_org_project(db: Session, user: m.User, project_id: str) -> m.Project:
+    """Fetch the project iff it belongs to the user's org, else 404.
+
+    The explicit org check holds even where RLS is a no-op (SQLite tests);
+    on Postgres the org-scoped RLS policy is the second layer.
+    """
+    try:
+        pid = uuid.UUID(str(project_id))
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=404, detail="project not found")
+    project = db.get(m.Project, pid)
+    if project is None or project.org_id != user.org_id:
+        raise HTTPException(status_code=404, detail="project not found")
     return project

@@ -123,7 +123,11 @@ class Tenant(Base):
     project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
     external_id: Mapped[str] = mapped_column(Text, nullable=False)
     name: Mapped[str] = mapped_column(Text, nullable=False)
-    monthly_revenue_usd: Mapped[Decimal] = mapped_column(REVENUE, nullable=False, default=0)
+    # NULL = revenue unknown (e.g. tenant auto-created from an event/CSV
+    # before revenue was provided) → P&L margin is None, status 'unknown'.
+    # This is deliberately distinct from 0, which would also be 'unknown'
+    # per the status rule but would misread as "measured zero revenue".
+    monthly_revenue_usd: Mapped[Decimal | None] = mapped_column(REVENUE, nullable=True, default=None)
     plan: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=_now())
 

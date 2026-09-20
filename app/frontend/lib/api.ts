@@ -88,20 +88,24 @@ export async function apiFetch<T = unknown>(
 // Typed API surface (contract per specs/03-implementation-plan.md)
 // ---------------------------------------------------------------------------
 
-export interface DemoPnlTenant {
+export interface PnlTenant {
   tenant_id: string;
   tenant_external_id: string;
   name: string;
   revenue_usd: number;
   ai_cost_usd: number;
   margin_usd: number;
-  status: "margin_killer" | "at_risk" | "healthy";
+  status: "margin_killer" | "at_risk" | "healthy" | "unknown";
 }
 
-export interface DemoPnlResponse {
-  tenants: DemoPnlTenant[];
-  data_label: "demo";
+export interface PnlResponse {
+  tenants: PnlTenant[];
+  data_label: "demo" | "customer";
 }
+
+/** Backwards-compatible aliases for the Phase 2 names. */
+export type DemoPnlTenant = PnlTenant;
+export type DemoPnlResponse = PnlResponse;
 
 export interface CostBreakdownItem {
   key: string;
@@ -139,12 +143,14 @@ export interface DemoInvestigateResponse {
   volume_vs_tokens: VolumeVsTokens;
   expensive_workflows: ExpensiveWorkflow[];
   recommendation: Recommendation;
-  data_label: "demo";
+  data_label: "demo" | "customer";
 }
 
-export async function fetchDemoPnl(): Promise<DemoPnlResponse> {
-  const raw = await apiFetch<DemoPnlResponse>("/demo/pnl", {}, { auth: false });
-  // Backend serializes Decimals as strings; normalize to numbers at the boundary.
+/** Backwards-compatible alias. */
+export type InvestigateResponse = DemoInvestigateResponse;
+
+/** Backend serializes Decimals as strings; normalize to numbers at the boundary. */
+export function normalizePnlResponse(raw: PnlResponse): PnlResponse {
   return {
     ...raw,
     tenants: raw.tenants.map((t) => ({
@@ -156,12 +162,18 @@ export async function fetchDemoPnl(): Promise<DemoPnlResponse> {
   };
 }
 
-export async function fetchDemoInvestigate(tenantId: string): Promise<DemoInvestigateResponse> {
-  const raw = await apiFetch<DemoInvestigateResponse>(
-    "/demo/investigate",
-    { method: "POST", body: JSON.stringify({ tenant_external_id: tenantId }) },
-    { auth: false }
-  );
+export async function fetchDemoPnl(): Promise<PnlResponse> {
+  const raw = await apiFetch<PnlResponse>("/demo/pnl", {}, { auth: false });
+  return normalizePnlResponse(raw);
+}
+
+export async function fetchProjectPnl(projectId: string): Promise<PnlResponse> {
+  const raw = await apiFetch<PnlResponse>(`/projects/${projectId}/pnl`);
+  return normalizePnlResponse(raw);
+}
+
+/** Backend serializes Decimals as strings; normalize to numbers at the boundary. */
+function normalizeInvestigateResponse(raw: DemoInvestigateResponse): InvestigateResponse {
   // Backend serializes Decimals as strings; normalize to numbers at the boundary.
   const num = (v: unknown): number => Number(v);
   // Backend driver items are {model|app, cost_usd, pct}; the UI reads {key, label, cost_usd, share_pct}.
@@ -212,6 +224,30 @@ export async function fetchDemoInvestigate(tenantId: string): Promise<DemoInvest
       confidence: raw.recommendation.confidence.replace(/\b\w/g, (c) => c.toUpperCase()),
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Investigate
+// ---------------------------------------------------------------------------
+
+export async function fetchDemoInvestigate(tenantId: string): Promise<InvestigateResponse> {
+  const raw = await apiFetch<DemoInvestigateResponse>(
+    "/demo/investigate",
+    { method: "POST", body: JSON.stringify({ tenant_external_id: tenantId }) },
+    { auth: false }
+  );
+  return normalizeInvestigateResponse(raw);
+}
+
+export async function fetchProjectInvestigate(
+  projectId: string,
+  tenantExternalId: string
+): Promise<InvestigateResponse> {
+  const raw = await apiFetch<DemoInvestigateResponse>(
+    `/projects/${projectId}/investigate`,
+    { method: "POST", body: JSON.stringify({ tenant_external_id: tenantExternalId }) }
+  );
+  return normalizeInvestigateResponse(raw);
 }
 
 // ---------------------------------------------------------------------------
@@ -266,4 +302,149 @@ export function formatUsd(n: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(n);
+}
+
+// ---------------------------------------------------------------------------
+// Projects (Phase 3)
+// ---------------------------------------------------------------------------
+
+export interface ProjectSummary {
+  id: string;
+  name: string;
+}
+
+/** Pull the project list out of GET /auth/me, tolerating missing/odd shapes. */
+export function extractProjects(me: AuthUser): ProjectSummary[] {
+  const raw = (me as { projects?: unknown }).projects;
+  if (!Array.isArray(raw)) return [];
+  const out: ProjectSummary[] = [];
+  for (const p of raw) {
+    if (p && typeof p === "object") {
+      const rec = p as Record<string, unknown>;
+      if (rec.id != null) {
+        out.push({
+          id: String(rec.id),
+          name: typeof rec.name === "string" && rec.name ? rec.name : String(rec.id),
+        });
+      }
+    }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Project API keys (Phase 3)
+// ---------------------------------------------------------------------------
+
+export interface ApiKeyInfo {
+  id: string;
+  name: string;
+  key_prefix: string;
+  created_at: string;
+  revoked_at?: string | null;
+}
+
+/** Returned once at creation — the only time the plaintext key is available. */
+export interface ApiKeyCreated extends ApiKeyInfo {
+  api_key: string;
+}
+
+export async function listApiKeys(projectId: string): Promise<ApiKeyInfo[]> {
+  return apiFetch<ApiKeyInfo[]>(`/projects/${projectId}/api-keys`);
+}
+
+export async function createApiKey(projectId: string, name: string): Promise<ApiKeyCreated> {
+  return apiFetch<ApiKeyCreated>(`/projects/${projectId}/api-keys`, {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function revokeApiKey(projectId: string, keyId: string): Promise<void> {
+  await apiFetch<void>(`/projects/${projectId}/api-keys/${keyId}`, { method: "DELETE" });
+}
+
+// ---------------------------------------------------------------------------
+// CSV upload (Phase 3)
+// ---------------------------------------------------------------------------
+
+export interface CsvPreviewRow {
+  row_number: number;
+  valid: boolean;
+  error?: string | null;
+  tenant?: string | null;
+  model?: string | null;
+  provider?: string | null;
+  cost_usd?: number | null;
+  [k: string]: unknown;
+}
+
+export interface CsvUploadResponse {
+  dry_run: boolean;
+  rows_received: number;
+  rows_valid: number;
+  rows_invalid: number;
+  /** Preview rows (dry run) — may be truncated to the first N rows by the server. */
+  rows: CsvPreviewRow[];
+  /** Commit mode: number of usage events ingested. */
+  events_ingested?: number | null;
+}
+
+function parseApiError(res: Response): Promise<never> {
+  return res
+    .json()
+    .then((body) => {
+      const detail =
+        body && typeof body.detail === "string"
+          ? body.detail
+          : `Request failed with status ${res.status}.`;
+      throw new ApiError(res.status, detail);
+    })
+    .catch((e) => {
+      if (e instanceof ApiError) throw e;
+      throw new ApiError(res.status, `Request failed with status ${res.status}.`);
+    });
+}
+
+/**
+ * Upload a usage CSV for a project. `columnMap` maps canonical field names
+ * (timestamp, provider, model, application, tenant, input_tokens, output_tokens,
+ * cost_reported) to the CSV's header names; `revenues` maps tenant id → monthly
+ * revenue in USD. With `dryRun=true` the server parses and validates without
+ * ingesting.
+ */
+export async function uploadCsv(
+  projectId: string,
+  file: File,
+  columnMap: Record<string, string>,
+  revenues: Record<string, number> | null,
+  dryRun: boolean
+): Promise<CsvUploadResponse> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("project_id", projectId);
+  form.append("column_map", JSON.stringify(columnMap));
+  if (revenues) form.append("revenues", JSON.stringify(revenues));
+  form.append("dry_run", String(dryRun));
+  const token = getAccessToken();
+  let res: Response;
+  try {
+    res = await fetch(`${API_V1}/integrations/csv/upload`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    });
+  } catch {
+    throw new ApiUnreachableError();
+  }
+  if (!res.ok) await parseApiError(res);
+  const raw = (await res.json()) as CsvUploadResponse;
+  // Backend serializes Decimals as strings; normalize to numbers at the boundary.
+  return {
+    ...raw,
+    rows: (raw.rows ?? []).map((r) => ({
+      ...r,
+      cost_usd: r.cost_usd != null ? Number(r.cost_usd) : r.cost_usd,
+    })),
+  };
 }
