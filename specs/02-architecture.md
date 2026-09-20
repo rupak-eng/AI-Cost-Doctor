@@ -98,6 +98,13 @@ users         (id uuid pk, org_id uuid→organizations, email citext unique,
 projects      (id uuid pk, org_id uuid→organizations, name text,
                created_at timestamptz)
 
+-- Tenants/customers of the B2B SaaS user (the unit-economics spearhead).
+-- usage_events.tenant_id references tenants.external_id.
+tenants       (id uuid pk, org_id uuid→organizations,
+               project_id uuid→projects, external_id text, name text,
+               monthly_revenue_usd numeric, plan text,
+               created_at timestamptz, unique(org_id, external_id))
+
 -- Provider credentials: key material NEVER in plaintext.
 provider_credentials (
   id uuid pk, org_id uuid→organizations, provider text /*openai|anthropic|...*/,
@@ -173,7 +180,7 @@ audit_log     (id uuid pk, org_id uuid→organizations, user_id uuid→users,
 | Investigate | `POST /investigate` `{project_id, period, anomaly_id?}` → root cause, evidence, action, savings, confidence |
 | Recommendations | `GET /recommendations`, `POST /recommendations/{id}/dismiss` |
 | Alerts | `GET/POST /alerts`, `POST /alerts/{id}/test` |
-| Demo | `POST /demo/seed` (labeled synthetic org), `DELETE /demo/reset` |
+| Demo | `POST /demo/seed` (labeled synthetic org), `DELETE /demo/reset`, `GET /demo/pnl` (tenant P&L, `"data_label":"demo"`), `POST /demo/investigate` (deterministic root-cause facts per tenant) |
 
 Auth: short-lived JWT access + rotating refresh; project ingest keys are
 random 48-char strings, stored as SHA-256 hash, shown once.
@@ -272,9 +279,13 @@ rejected and retried once, then falls back to the template narrative.
 ## 11. Testing strategy
 
 - `costing.py`: property tests (price × tokens math, effective-date
-  boundaries, reported-vs-calculated labeling).
+  boundaries, reported-vs-calculated labeling). Arithmetic must be exact.
 - Anomaly detection: synthetic fixtures (spike, drift, no-op) with asserted
   outcomes — the same fixtures power demo mode.
+- Seed calibration: the demo seed's engine-computed P&L is asserted within
+  ±5% of the calibration targets in `03-implementation-plan.md` (margin
+  killer, profitable tenants, routing-savings figure). No hardcoded P&L.
 - API: integration tests with throwaway Postgres per run.
-- Frontend: smoke tests on the onboarding → dashboard path.
-- Every phase ends with the compose stack green and the demo flow working.
+- Frontend: smoke tests on the landing → demo → P&L → investigate path.
+- Every phase ends with the compose stack green (where runnable), the demo
+  flow working, and tests passing.

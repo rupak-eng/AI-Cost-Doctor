@@ -19,6 +19,23 @@ maintenance mode (Mar 2026), stranding a cost-conscious proxy user base.
 
 ## Decision
 
+**Revised product hierarchy (2026-09-21, approved with adjustment):**
+
+1. **Per-customer AI unit economics / Tenant P&L — the spearhead.**
+   "Which of my customers are unprofitable because of AI usage?" then
+   "Why, and what can I change to fix it?"
+2. **Cost diagnosis — the core engine.** Anomaly → root-cause attribution
+   across provider/model/application/tenant.
+3. **Savings recommendations — monetization / value proof.**
+   Dollar-quantified, confidence-labeled, never guaranteed.
+4. **General cost analytics — supporting feature.** The dashboard exists to
+   serve the diagnosis loop, not as the product's identity.
+
+Do NOT position AI Cost Doctor primarily as an AI observability dashboard.
+Lead with "AI unit economics", "customer profitability", "margin killers",
+"cost diagnosis", "potential savings", "root cause". Never "LLM
+observability platform", "AI monitoring platform", or "another dashboard".
+
 **Wedge A — vendor-neutral cost-diagnosis layer — as the product,
 Wedge B — per-customer/tenant margin analysis — as the spearhead feature
 and lead go-to-market motion.**
@@ -37,34 +54,47 @@ tenant P&L before we reach traction, or OpenAI/Anthropic ship genuinely good
 native cost diagnosis (structural disincentive: neither will ever show the
 other's spend). Revisit quarterly against the watchlist in the research report.
 
-## MVP scope (v0.1) — in
+## MVP scope (v0.1) — in (demo-first order)
 
-1. **Auth + multi-tenancy:** signup/login (JWT), organizations, projects, roles.
+0. **Demo-first development:** alongside landing/auth, ship a polished
+   interactive demo on clearly-labeled synthetic data ("Demo data").
+   Every demo metric is computed by the real cost engine over seeded usage
+   events — no hardcoded P&L figures, no faked economics. The same backend
+   calculations power demo mode and real customer data.
+1. **Tenant P&L (spearhead):** cost per customer/tenant, margin vs monthly
+   revenue, margin-killer list and alerts.
+2. **Cost diagnosis engine:** deterministic anomaly detection →
+   "Investigate" root-cause narrative (model, application, volume vs token
+   change, expensive workflows) → evidence → recommended action →
+   estimated savings → confidence.
+3. **Savings recommendations:** model routing, prompt caching, token
+   hygiene — each with current cost, estimated monthly savings (labeled as
+   estimates, never guaranteed), confidence.
 2. **Onboarding (5-minute path):** connect OpenAI (Costs/usage API), connect
    Anthropic (Admin Usage + Cost APIs), CSV upload with column mapping,
-   per-project event-ingest API keys (simple `POST /v1/events`).
+   per-project event-ingest API keys (`POST /api/v1/ingest/events`).
 3. **Pricing catalog + deterministic cost engine:** versioned provider→model
    prices with effective dates; per-event computed cost; reported vs
    calculated vs estimated cost distinguished in the UI.
-4. **Dashboard:** total spend, this month / last month / % change, projected
-   month-end, requests, tokens, avg cost/request, cost by provider / model /
-   application / tenant, spend over time.
-5. **Cost explorer:** filters for provider, model, application, environment,
-   tenant, date range.
-6. **Anomaly detection:** 7-day vs 28-day robust comparison per dimension
-   (provider, model, application, tenant), Slack/email alerts.
-7. **Investigate flow:** root cause → evidence → affected scope →
-   recommended action → estimated savings → confidence. LLM writes the
-   narrative; all numbers are computed deterministically.
-8. **Savings opportunities page:** model routing, prompt caching, token
-   hygiene — each with current cost, estimated monthly savings, confidence.
-   Labeled as estimates, never guaranteed.
-9. **Tenant P&L view:** cost per customer/tenant, margin vs plan price,
-   margin-killer alerts (requires tenant metadata via event API or CSV column).
-10. **Demo mode:** clearly-labeled synthetic dataset + "See Demo" on the
-    landing page. No fake data ever presented as real.
-11. **Landing page:** per the brief (problem, how it works, diagnosis example,
-    savings, providers, security, pricing, FAQ) — no unbacked claims.
+4. **Dashboard + cost explorer (supporting):** total spend, this/last month,
+   Δ%, projected month-end, requests, tokens, avg cost/request, breakdowns
+   by provider/model/application/tenant, spend over time; filters +
+   CSV export. In service of the diagnosis loop, not the product identity.
+5. **Landing page:** per the brief (problem, how it works, diagnosis
+   example, savings, providers, security, pricing, FAQ) — hero "Find where
+   your AI budget is leaking.", CTAs "Analyze My AI Spend" → signup and
+   "See How It Works" → demo. No unbacked claims.
+
+## MVP success criteria (demo-first)
+
+- **Demo flow:** landing → demo → customer P&L → margin killer →
+  investigate → root cause → recommended action → estimated savings,
+  all on labeled synthetic data computed by the real engine.
+- **CSV flow:** the same flow working with uploaded CSV data.
+- Signup → connected data → P&L with diagnosis in under 5 minutes.
+- Investigate produces the correct root cause on synthetic spike fixtures.
+- Quantified savings shown ≥ 10× the subscription price (retention bar).
+- First 10 design-partner conversations booked from the landing page.
 
 ## Explicitly out of scope (v0.1)
 
@@ -88,9 +118,13 @@ integrations, retention/support). No per-seat tax, no per-event tax —
 priced as a small fraction of AI spend (~1–10% at $5k/mo bill, in line
 with FinOps norms).
 
-## MVP success criteria
+## MVP success criteria (demo-first)
 
-- Signup → connected data → dashboard with diagnosis in under 5 minutes.
+- **Demo flow:** landing → demo → customer P&L → margin killer →
+  investigate → root cause → recommended action → estimated savings,
+  all on labeled synthetic data computed by the real engine.
+- **CSV flow:** the same flow working with uploaded CSV data.
+- Signup → connected data → P&L with diagnosis in under 5 minutes.
 - Investigate produces the correct root cause on synthetic spike fixtures.
-- Quantified savings shown ≥ 10× the subscription price (the retention bar).
+- Quantified savings shown ≥ 10× the subscription price (retention bar).
 - First 10 design-partner conversations booked from the landing page.
