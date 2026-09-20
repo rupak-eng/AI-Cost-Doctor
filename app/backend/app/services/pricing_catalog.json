@@ -1,0 +1,39 @@
+{
+  "notes": "Curated from provider pricing pages (per-1M-token list prices, USD). Prices are strings to preserve exact decimals. effective_from is the date the price row takes effect; effective_to null means current.",
+  "prices": [
+    {
+      "cached_input_usd_per_1m": "0.50",
+      "effective_from": "2025-04-14",
+      "effective_to": null,
+      "input_usd_per_1m": "2.00",
+      "model": "gpt-4.1",
+      "output_usd_per_1m": "8.00",
+      "provider": "openai",
+      "reasoning_usd_per_1m": null,
+      "source": "catalog"
+    },
+    {
+      "cached_input_usd_per_1m": "0.10",
+      "effective_from": "2025-04-14",
+      "effective_to": null,
+      "input_usd_per_1m": "0.40",
+      "model": "gpt-4.1-mini",
+      "output_usd_per_1m": "1.60",
+      "provider": "openai",
+      "reasoning_usd_per_1m": null,
+      "source": "catalog"
+    },
+    {
+      "cached_input_usd_per_1m": "0.08",
+      "effective_from": "2024-10-22",
+      "effective_to": null,
+      "input_usd_per_1m": "0.80",
+      "model": "claude-3-5-haiku-20241022",
+      "output_usd_per_1m": "4.00",
+      "provider": "anthropic",
+      "reasoning_usd_per_1m": null,
+      "source": "catalog"
+    }
+  ],
+  "version": "2026-09-21"
+}
