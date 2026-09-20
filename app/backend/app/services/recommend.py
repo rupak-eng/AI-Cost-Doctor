@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from app.services.costing import ONE_MILLION, Price, PriceNotFoundError, load_catalog
+from app.services.costing import Price, PriceNotFoundError, event_cost, load_catalog
 
 
 @dataclass(frozen=True)
@@ -52,13 +52,20 @@ class RoutingOpportunity:
 
 
 def _pair_cost_with(price: Price, pair: PairStats) -> Decimal:
-    total = (Decimal(pair.input_tokens) * price.input_usd_per_1m
-             + Decimal(pair.output_tokens) * price.output_usd_per_1m)
-    if pair.cached_input_tokens and price.cached_input_usd_per_1m is not None:
-        total += Decimal(pair.cached_input_tokens) * price.cached_input_usd_per_1m
-    if pair.reasoning_tokens and price.reasoning_usd_per_1m is not None:
-        total += Decimal(pair.reasoning_tokens) * price.reasoning_usd_per_1m
-    return total / ONE_MILLION
+    """Cost of the pair's token mix at one catalog price.
+
+    Delegates to the single deterministic code path (costing.event_cost) —
+    see costing.py for the pricing rule. Raises PriceNotFoundError when the
+    price lacks a cached-input/reasoning rate the pair needs; callers treat
+    that as "cannot price this alternative" and skip it.
+    """
+    return event_cost(
+        input_tokens=pair.input_tokens,
+        output_tokens=pair.output_tokens,
+        price=price,
+        cached_input_tokens=pair.cached_input_tokens,
+        reasoning_tokens=pair.reasoning_tokens,
+    )
 
 
 def _current_prices(catalog: list[Price]) -> dict[tuple[str, str], Price]:

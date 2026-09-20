@@ -520,3 +520,73 @@ export async function getProviderSyncStatus(
 ): Promise<ProviderSyncStatus> {
   return apiFetch<ProviderSyncStatus>(`/integrations/providers/${credentialId}/sync-status`);
 }
+
+// ---------------------------------------------------------------------------
+// Project dashboard (Phase 5)
+// ---------------------------------------------------------------------------
+
+export interface DashboardTrendPoint {
+  date: string; // YYYY-MM-DD (UTC)
+  cost_usd: number;
+  requests: number;
+}
+
+export interface DashboardModelRow {
+  provider: string;
+  model: string;
+  cost_usd: number;
+  requests: number;
+  share_pct: number;
+}
+
+export interface DashboardApplicationRow {
+  application: string;
+  cost_usd: number;
+  requests: number;
+  share_pct: number;
+}
+
+export interface DashboardTenantRow {
+  tenant_external_id: string | null;
+  tenant_name: string | null;
+  cost_usd: number;
+  requests: number;
+}
+
+export interface DashboardResponse {
+  data_label: "customer";
+  days: number;
+  total_cost_usd: number;
+  total_requests: number;
+  unpriced_events: number;
+  cost_basis: "calculated";
+  trend: DashboardTrendPoint[];
+  by_model: DashboardModelRow[];
+  by_application: DashboardApplicationRow[];
+  top_tenants: DashboardTenantRow[];
+}
+
+export type DashboardDays = 7 | 30 | 90;
+
+/** Backend serializes Decimals as strings; normalize to numbers at the boundary. */
+function normalizeDashboardResponse(raw: DashboardResponse): DashboardResponse {
+  const num = (v: unknown): number => Number(v);
+  return {
+    ...raw,
+    total_cost_usd: num(raw.total_cost_usd),
+    trend: raw.trend.map((p) => ({ ...p, cost_usd: num(p.cost_usd) })),
+    by_model: raw.by_model.map((r) => ({ ...r, cost_usd: num(r.cost_usd), share_pct: num(r.share_pct) })),
+    by_application: raw.by_application.map((r) => ({ ...r, cost_usd: num(r.cost_usd), share_pct: num(r.share_pct) })),
+    top_tenants: raw.top_tenants.map((r) => ({ ...r, cost_usd: num(r.cost_usd) })),
+  };
+}
+
+export async function fetchProjectDashboard(
+  projectId: string,
+  days: DashboardDays = 30
+): Promise<DashboardResponse> {
+  const raw = await apiFetch<DashboardResponse>(
+    `/projects/${projectId}/dashboard?days=${days}`
+  );
+  return normalizeDashboardResponse(raw);
+}

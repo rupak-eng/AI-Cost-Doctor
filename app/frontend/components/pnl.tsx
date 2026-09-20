@@ -89,6 +89,43 @@ function TenantCard({
   );
 }
 
+function MarginKillerSpotlight({
+  tenant,
+  investigateHref,
+}: {
+  tenant: PnlTenant;
+  investigateHref: string;
+}) {
+  const loss = tenant.revenue_usd > 0 ? -tenant.margin_usd : tenant.ai_cost_usd;
+  return (
+    <div className="mb-8 rounded-xl border border-red-200 bg-red-50 p-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-red-700">
+            Margin killer
+          </p>
+          <h2 className="mt-1 text-xl font-bold text-slate-900">
+            {tenant.name} is costing you{" "}
+            <span className="tabular-nums text-red-700">{formatUsd(loss)}</span>{" "}
+            {tenant.revenue_usd > 0 ? "more than it pays you" : "with no revenue attached"}
+          </h2>
+          <p className="mt-1 text-sm text-slate-600">
+            AI cost {formatUsd(tenant.ai_cost_usd)}
+            {tenant.revenue_usd > 0 && ` on ${formatUsd(tenant.revenue_usd)} revenue`}.
+            Investigate the root cause and see what you can change.
+          </p>
+        </div>
+        <Link
+          href={investigateHref}
+          className="inline-flex shrink-0 rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-800"
+        >
+          Investigate {tenant.name} →
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 export interface PnlViewProps {
   /** true → "Demo data" badges + synthetic-data caption; false → "Live data" caption. */
   demo: boolean;
@@ -111,8 +148,17 @@ export default function PnlView({
   investigateHref,
   emptyState,
 }: PnlViewProps) {
+  const marginKiller = tenants
+    .filter((t) => t.status === "margin_killer")
+    .sort((a, b) => a.margin_usd - b.margin_usd)[0];
   return (
     <div>
+      {marginKiller && !loading && !error && (
+        <MarginKillerSpotlight
+          tenant={marginKiller}
+          investigateHref={investigateHref(marginKiller.tenant_external_id)}
+        />
+      )}
       <div className="max-w-3xl">
         <div className="flex items-center gap-3">
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">

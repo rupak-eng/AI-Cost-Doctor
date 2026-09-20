@@ -52,3 +52,44 @@ class ProjectInvestigateResponse(BaseModel):
     volume_vs_tokens: VolumeVsTokens
     expensive_workflows: list[ExpensiveWorkflow]
     recommendation: CustomerRecommendationOut | None
+
+
+class DashboardTrendPoint(BaseModel):
+    date: str  # YYYY-MM-DD (UTC)
+    cost_usd: Decimal
+    requests: int
+
+
+class DashboardModelRow(BaseModel):
+    provider: str
+    model: str
+    cost_usd: Decimal
+    requests: int
+    share_pct: Decimal  # share of total calculated cost
+
+
+class DashboardApplicationRow(BaseModel):
+    application: str
+    cost_usd: Decimal
+    requests: int
+    share_pct: Decimal  # share of total calculated cost
+
+
+class DashboardTenantRow(BaseModel):
+    tenant_external_id: str | None
+    tenant_name: str | None
+    cost_usd: Decimal
+    requests: int
+
+
+class ProjectDashboardResponse(BaseModel):
+    data_label: str = "customer"
+    days: int
+    total_cost_usd: Decimal
+    total_requests: int
+    unpriced_events: int
+    cost_basis: str = "calculated"  # every figure is deterministic catalog math
+    trend: list[DashboardTrendPoint]
+    by_model: list[DashboardModelRow]
+    by_application: list[DashboardApplicationRow]
+    top_tenants: list[DashboardTenantRow]

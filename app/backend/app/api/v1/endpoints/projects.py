@@ -6,6 +6,8 @@
   DELETE /projects/{project_id}/api-keys/{key_id}   revoke a key
   GET    /projects/{project_id}/pnl?days=30         per-tenant P&L
   POST   /projects/{project_id}/investigate         root-cause facts
+  GET    /projects/{project_id}/dashboard?days=30  spend overview
+                                                    (7, 30, or 90 days)
 
 All responses carry "data_label": "customer". Every lookup is org-scoped
 (explicit org check + RLS); cross-org access → 404.
@@ -26,6 +28,7 @@ from app.api.v1 import deps
 from app.core.db import get_db
 from app.schemas import api_keys as key_schemas
 from app.schemas import projects as schemas
+from app.services.dashboard import compute_dashboard
 from app.services.investigate import TenantNotFoundError, investigate_tenant
 from app.services.pnl import compute_pnl
 
@@ -123,3 +126,22 @@ def project_investigate(project_id: str, payload: schemas.ProjectInvestigateRequ
     except TenantNotFoundError:
         raise HTTPException(status_code=404, detail="tenant not found")
     return schemas.ProjectInvestigateResponse(**result)
+
+
+@router.get("/{project_id}/dashboard", response_model=schemas.ProjectDashboardResponse)
+def project_dashboard(project_id: str,
+                      days: int = Query(default=30),
+                      user: m.User = Depends(deps.get_current_user),
+                      db: Session = Depends(get_db)):
+    """Spend overview for a project: totals, daily trend, breakdowns by model
+    and application, and top cost-driving tenants.
+
+    Every figure aggregates usage_events.cost_calculated_usd — the
+    deterministic engine's output. No pricing math happens here.
+    """
+    if days not in (7, 30, 90):
+        raise HTTPException(
+            status_code=400, detail="days must be one of 7, 30, 90")
+    project = deps.get_org_project(db, user, project_id)
+    data = compute_dashboard(db, user.org_id, project.id, days=days)
+    return schemas.ProjectDashboardResponse(**data)
