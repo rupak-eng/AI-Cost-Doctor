@@ -252,6 +252,10 @@ def acknowledge_project_anomaly(project_id: str, anomaly_id: str,
                                 user: m.User = Depends(deps.get_current_user),
                                 db: Session = Depends(get_db)):
     """Mark an anomaly acknowledged. Cross-org ids → 404 (no existence leak)."""
+    # Paid feature: acknowledging requires the same entitlement as reading the
+    # feed — the response carries the anomaly's dollar figures, so an ungated
+    # acknowledge would leak paid anomaly data to free-tier orgs.
+    billing.require_paid_feature(user, db, "anomaly_reads")
     project = deps.get_org_project(db, user, project_id)
     try:
         aid = uuid.UUID(str(anomaly_id))

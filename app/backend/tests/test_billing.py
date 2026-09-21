@@ -349,6 +349,11 @@ class TestEntitlements:
         r = client.post("/api/v1/integrations/providers/nope/sync?project_id=" + project_id,
                         json={"days_back": 7}, headers=headers)
         assert r.status_code == 402, r.text
+        # acknowledge carries the anomaly's dollar figures, so it is gated too
+        r = client.post(
+            f"/api/v1/projects/{project_id}/anomalies/00000000-0000-0000-0000-000000000000/acknowledge",
+            headers=headers)
+        assert r.status_code == 402, r.text
 
     def test_expired_trial_keeps_free_features(self, client, db_url):
         _, headers, project_id, org_id = _signup(client, "en4")
