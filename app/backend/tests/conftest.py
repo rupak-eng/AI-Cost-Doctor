@@ -11,11 +11,20 @@ import os
 import sys
 
 # --- Choose the database BEFORE importing any app modules -----------------
+# A valid FERNET_KEY is required before app.main import (it fail-fasts on
+# startup config). Generate a throwaway one for the test process when the
+# operator hasn't provided one — never bake a placeholder into the repo.
+if not os.environ.get("FERNET_KEY"):
+    from cryptography.fernet import Fernet
+    os.environ["FERNET_KEY"] = Fernet.generate_key().decode()
+
 PG_URL = os.environ.get(
     "TEST_DATABASE_URL",
     "postgresql+psycopg2://aicostdoctor:dev-local-only@localhost:5432/ai_cost_doctor_test",
 )
-SQLITE_PATH = "/tmp/aicostdoctor_test.db"
+# Overridable so parallel agents/CI shards don't stomp on each other's
+# SQLite file (conftest deletes + rebuilds it at import).
+SQLITE_PATH = os.environ.get("ACD_TEST_SQLITE_PATH", "/tmp/aicostdoctor_test.db")
 
 
 def _pg_reachable(url: str) -> bool:

@@ -48,28 +48,28 @@ function TenantCard({
         </div>
         <StatusBadge status={tenant.status} />
       </div>
-      <dl className="mt-5 grid grid-cols-3 gap-4">
-        <div>
+      <dl className="mt-5 grid grid-cols-3 gap-3 sm:gap-4">
+        <div className="min-w-0">
           <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
             Monthly revenue
           </dt>
-          <dd className="mt-1 text-lg font-bold tabular-nums text-slate-900">
+          <dd className="mt-1 text-base font-bold tabular-nums text-slate-900 sm:text-lg">
             {tenant.revenue_usd > 0 ? formatUsd(tenant.revenue_usd) : "—"}
           </dd>
         </div>
-        <div>
+        <div className="min-w-0">
           <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
             AI cost
           </dt>
-          <dd className="mt-1 text-lg font-bold tabular-nums text-slate-900">
+          <dd className="mt-1 text-base font-bold tabular-nums text-slate-900 sm:text-lg">
             {formatUsd(tenant.ai_cost_usd)}
           </dd>
         </div>
-        <div>
+        <div className="min-w-0">
           <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
             Gross AI margin
           </dt>
-          <dd className={`mt-1 text-lg font-bold tabular-nums ${marginClass}`}>
+          <dd className={`mt-1 text-base font-bold tabular-nums sm:text-lg ${marginClass}`}>
             {tenant.revenue_usd > 0 ? formatUsd(tenant.margin_usd) : "—"}
           </dd>
         </div>

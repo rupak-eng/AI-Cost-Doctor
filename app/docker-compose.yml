@@ -3,8 +3,18 @@
 #   docker compose up --build
 #
 # Services: postgres:16 (named volume), api (FastAPI), worker (same image,
-# APScheduler entrypoint), web (Next.js frontend — built by the frontend
-# phase; the directory does not exist yet in Phase 1).
+# APScheduler entrypoint), web (Next.js frontend).
+#
+# PRODUCTION NOTES (see specs/09-ops-notes.md for the full checklist):
+#   - ENVIRONMENT=production enables fail-fast gates: FERNET_KEY must be a
+#     valid Fernet key, JWT_SECRET must be set (>= 32 chars, not the dev
+#     placeholder), DATABASE_URL must be PostgreSQL.
+#   - Override POSTGRES_PASSWORD (dev default is literally "postgres") and
+#     DATABASE_URL with production values; prefer a managed secret store
+#     over env_file for real secrets.
+#   - Set CORS_ORIGINS to the real frontend origin(s).
+#   - Register the Stripe webhook endpoint at
+#     https://<api-host>/api/v1/billing/webhook and set STRIPE_WEBHOOK_SECRET.
 
 services:
   db:
@@ -61,7 +71,8 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     restart: unless-stopped
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     env_file: .env
     ports:
       - "3000:3000"

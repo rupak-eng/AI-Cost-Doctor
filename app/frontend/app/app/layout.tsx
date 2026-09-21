@@ -113,6 +113,25 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <span className="font-semibold text-slate-900">AI Cost Doctor</span>
           <Link href="/demo" className="text-sm font-medium text-indigo-600">Demo</Link>
         </header>
+        {/* Mobile section nav — the sidebar is desktop-only, so small screens get this strip. */}
+        <nav className="flex gap-1 overflow-x-auto border-b border-slate-200 bg-white px-4 py-2 md:hidden" aria-label="App sections">
+          {NAV.filter((item) => !("comingSoon" in item)).map((item) => {
+            const active = pathname === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href!}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium",
+                  active ? "bg-indigo-50 text-indigo-700" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                )}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
         <main className="flex-1 p-6 md:p-10">
           {PLACEHOLDERS[pathname] ? (
             <Placeholder

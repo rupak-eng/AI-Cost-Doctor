@@ -163,7 +163,7 @@ function EventApiSection({ projectId }: { projectId: string }) {
               if (e.key === "Enter") handleCreate();
             }}
             placeholder="e.g. production"
-            className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400"
+            className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400"
           />
           <button
             onClick={handleCreate}
@@ -967,8 +967,9 @@ export default function ConnectPage() {
         <div className="max-w-2xl">
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Connect</h1>
           <p className="mt-1 text-sm text-slate-600">
-            Get your usage data flowing. Upload a CSV export or stream events via the
-            API — your Customer P&L appears as soon as data lands.
+            Get your usage data flowing. Pull usage straight from OpenAI and
+            Anthropic, upload a CSV export, or stream events via the API — your
+            Customer P&L appears as soon as data lands.
           </p>
         </div>
         <ProjectSelector state={projects} />

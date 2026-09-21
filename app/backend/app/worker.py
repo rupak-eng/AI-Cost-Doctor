@@ -7,8 +7,11 @@ as additional scheduled functions here.
 from __future__ import annotations
 
 import logging
+import sys
 
 from apscheduler.schedulers.blocking import BlockingScheduler
+
+from app.core.config import ConfigurationError, validate_startup_config
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("ai-cost-doctor.worker")
@@ -19,6 +22,15 @@ def heartbeat() -> None:
 
 
 def main() -> None:
+    # Fail fast on bad secrets/config before the scheduler starts, mirroring
+    # the API's boot check (same message, same exit behaviour).
+    try:
+        validate_startup_config()
+    except ConfigurationError as exc:
+        print(f"FATAL: invalid configuration — {exc}", file=sys.stderr)
+        print("FATAL: refusing to start. Fix the environment and try again.",
+              file=sys.stderr)
+        raise SystemExit(1)
     scheduler = BlockingScheduler()
     scheduler.add_job(heartbeat, "interval", seconds=60, id="heartbeat")
     log.info("starting worker scheduler")

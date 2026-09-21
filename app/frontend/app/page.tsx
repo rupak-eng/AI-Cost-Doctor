@@ -261,12 +261,11 @@ export default function LandingPage() {
             title="A fraction of your AI spend"
             lede="No per-seat tax, no per-event tax. Priced against the savings we find."
           />
-          <div className="mx-auto mt-12 grid max-w-5xl gap-6 md:grid-cols-4">
+          <div className="mx-auto mt-12 grid max-w-5xl gap-6 md:grid-cols-3">
             {[
-              { name: "Free", price: "$0", features: ["1 project", "Basic cost analytics", "CSV upload"] },
-              { name: "Starter", price: "$49/mo", features: ["1 project", "Anomaly detection", "Savings recommendations"], highlight: true },
-              { name: "Growth", price: "$149/mo", features: ["Multi-project", "Tenant P&L", "Team access", "Cost history"] },
-              { name: "Scale", price: "$399/mo", features: ["Multi-team", "Advanced integrations", "Extended retention", "Priority support"] },
+              { name: "Trial", price: "$0", features: ["14 days, full features", "No card required", "1 project", "CSV upload"] },
+              { name: "Starter", price: "$49/mo", features: ["1 project", "Anomaly detection", "Savings recommendations", "Provider integrations"], highlight: true },
+              { name: "Growth", price: "$199/mo", features: ["5 projects", "Tenant P&L", "Extended retention", "Team access"] },
             ].map((t) => (
               <div
                 key={t.name}
@@ -283,7 +282,7 @@ export default function LandingPage() {
             ))}
           </div>
           <p className="mt-8 text-center text-sm text-slate-500">
-            Billing is coming soon — plans shown above are the target pricing.
+            Start with a 14-day free trial — every signup gets full features, no card required.
           </p>
         </div>
       </section>

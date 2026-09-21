@@ -306,6 +306,32 @@ class TestPnLStatuses:
         assert pnl_service.tenant_status(Decimal("10"), Decimal("0")) == "unknown"
 
 
+class TestCostBasisHonesty:
+    def test_reported_costs_never_feed_dashboard_or_pnl(self, db, seeded):
+        """Launch honesty invariant: every analytics figure derives from
+        cost_calculated_usd — provider-reported costs are never inputs.
+        Poisoning cost_reported_usd with absurd values must not move any
+        dashboard total or P&L margin."""
+        org, _, project = seeded
+        db.query(m.UsageEvent).filter_by(org_id=org.id).update(
+            {"cost_reported_usd": Decimal("999999.99")},
+            synchronize_session=False,
+        )
+        db.flush()
+
+        d = dashboard_service.compute_dashboard(db, org.id, project.id, days=30)
+        assert d["total_cost_usd"] == Decimal("210.00")
+        assert d["cost_basis"] == "calculated"
+        assert all(p["cost_usd"] < Decimal("1000000") for p in d["trend"])
+
+        rows = {r["tenant_external_id"]: r
+                for r in pnl_service.compute_pnl(db, org.id, project.id, days=30)}
+        assert rows["acme"]["ai_cost_usd"] == Decimal("60.00")
+        assert rows["acme"]["margin_usd"] == Decimal("940.00")
+        assert rows["globex"]["ai_cost_usd"] == Decimal("150.00")
+        assert rows["globex"]["margin_usd"] == Decimal("-50.00")
+
+
 class TestDashboardEndpoint:
     def test_dashboard_round_trip_matches_service(self, client, committed):
         from app.schemas import projects as project_schemas

@@ -38,6 +38,9 @@ CANONICAL_OPTIONAL = {"application", "tenant", "cost_reported"}
 CANONICAL_ALL = CANONICAL_REQUIRED | CANONICAL_OPTIONAL
 
 MAX_ROWS = 50_000
+# Hard cap on the raw upload body. The row limit alone does not bound memory:
+# a small number of very wide rows could otherwise exhaust the worker.
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MiB
 INVALID_SAMPLE_SIZE = 5
 PREVIEW_SIZE = 5
 
@@ -221,7 +224,9 @@ async def upload_csv(
     cmap = _parse_column_map(column_map)
     revenue_map = _parse_revenues(revenues)
 
-    raw_bytes = await file.read()
+    raw_bytes = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(raw_bytes) > MAX_UPLOAD_BYTES:
+        raise _bad(f"file exceeds the {MAX_UPLOAD_BYTES // (1024 * 1024)} MiB upload limit")
     if not raw_bytes or not raw_bytes.strip():
         raise _bad("file is empty")
     try:

@@ -112,7 +112,7 @@ export default function InvestigateView({
 
   return (
     <div>
-      <div className="mb-8 flex items-center justify-between">
+      <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-slate-900">Investigate</h1>

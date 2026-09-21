@@ -4,8 +4,9 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
-.env
 .pytest_cache/
+.coverage
+htmlcov/
 
 # Node / Next.js
 node_modules/
@@ -13,13 +14,23 @@ node_modules/
 out/
 *.tsbuildinfo
 
-# Env & secrets — never commit
+# Env & secrets — never commit real values
 .env
 .env.*
+# ...except the committed template (placeholder values only, safe to track)
+!.env.example
 *.pem
 *.key
 credentials*.json
 secrets/
+
+# Local databases (tests use /tmp, but never commit a stray sqlite file)
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
 
 # OS / IDE
 .DS_Store

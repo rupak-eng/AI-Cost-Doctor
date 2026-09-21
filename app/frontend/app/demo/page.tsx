@@ -42,6 +42,12 @@ export default function DemoPage() {
       </header>
 
       <main className="mx-auto max-w-7xl px-6 py-12">
+        <p className="mb-8 max-w-3xl text-sm text-slate-500">
+          You&apos;re exploring a sample AI company on labeled synthetic data.
+          Find the margin killer below, then click{" "}
+          <span className="font-medium text-slate-700">Investigate</span> to see
+          the root-cause diagnosis and what you could change.
+        </p>
         <PnlView
           demo
           loading={loading}

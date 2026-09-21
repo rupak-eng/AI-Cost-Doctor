@@ -51,6 +51,27 @@ def _authed(client):
     return body, headers, body["project"]["id"], body["org"]["id"]
 
 
+def _freeze_service_time(monkeypatch):
+    """Pin datetime.now() inside the analytics services.
+
+    The demo seed writes events up to ~1h in the future and the P&L /
+    investigate windows end at "now", so two computations seconds apart can
+    legitimately disagree (verified: 3s apart moved cust-a's cost). Freezing
+    "now" makes the HTTP-vs-service comparison deterministic without
+    touching the seed data or the services under test.
+    """
+    fixed = datetime.now(timezone.utc)
+
+    class _FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed if tz is not None else fixed.replace(tzinfo=None)
+
+    monkeypatch.setattr(pnl_service, "datetime", _FrozenDateTime)
+    import app.services.investigate as investigate_service
+    monkeypatch.setattr(investigate_service, "datetime", _FrozenDateTime)
+
+
 def _make_key(client, headers, project_id, name="ci-key"):
     r = client.post(f"/api/v1/projects/{project_id}/api-keys",
                     json={"name": name}, headers=headers)
@@ -343,7 +364,7 @@ class TestProjectPnlInvestigate:
                         json={"tenant_external_id": "nope"}, headers=headers)
         assert r.status_code == 404
 
-    def test_demo_http_matches_shared_service(self, client, db):
+    def test_demo_http_matches_shared_service(self, client, db, monkeypatch):
         """End-to-end proof on the seeded demo dataset: /demo/* HTTP responses
         equal the shared services' output (plus the demo label)."""
         r = client.post("/api/v1/demo/seed")
@@ -351,6 +372,7 @@ class TestProjectPnlInvestigate:
         if r.status_code == 409:
             assert client.delete("/api/v1/demo/reset").status_code == 200
             assert client.post("/api/v1/demo/seed").status_code == 201
+        _freeze_service_time(monkeypatch)
         try:
             _rls(db, demo_org_id())
             expected_pnl = demo_schemas.PnLResponse(
