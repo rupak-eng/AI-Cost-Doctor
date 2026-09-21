@@ -13,6 +13,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app import models as m
+from app.api.v1 import deps
 from app.services import dashboard as dashboard_service
 from app.services import pnl as pnl_service
 from app.services import recommend
@@ -133,9 +134,13 @@ class TestSinglePricingPath:
 
 def _mk_org_project(db):
     slug = f"p5-{uuid.uuid4().hex[:10]}"
-    org = m.Organization(id=uuid.uuid4(), name="P5 Org", slug=slug)
-    db.add(org)
-    db.flush()
+    # Mirror signup: org row goes in under the pre-auth RLS bootstrap, then
+    # the session is pinned to the org exactly as the auth dependency does.
+    with deps.pre_auth_lookup(db):
+        org = m.Organization(id=uuid.uuid4(), name="P5 Org", slug=slug)
+        db.add(org)
+        db.flush()
+    deps.set_rls_org(db, org.id)
     user = m.User(id=uuid.uuid4(), org_id=org.id,
                   email=f"p5-{uuid.uuid4().hex[:8]}@x.io", password_hash="x")
     project = m.Project(id=uuid.uuid4(), org_id=org.id, name="P5 Project")
@@ -332,12 +337,69 @@ class TestCostBasisHonesty:
         assert rows["globex"]["margin_usd"] == Decimal("-50.00")
 
 
+class TestPnLUnpricedHonesty:
+    """Launch honesty invariant: a tenant whose events are unpriced (NULL
+    calculated cost) must never silently read as $0 AI cost in the P&L.
+    The row carries an explicit unpriced_events count instead."""
+
+    def _seed_unpriced_tenant(self, db, org=None, project=None):
+        if org is None or project is None:
+            org, _, project = _mk_org_project(db)
+        _mk_tenant(db, org, project, "pricedco", "Priced Co", "1000.00")
+        _mk_tenant(db, org, project, "mysteryco", "Mystery Co", "500.00")
+        now = _now()
+        _mk_event(db, org, project, tenant_id="pricedco", provider="openai",
+                  model="gpt-4.1-mini", application="chat",
+                  at=now - timedelta(days=1), cost="42.00")
+        # Mystery Co: two events, no catalog price -> NULL cost (unknown, not $0)
+        _mk_event(db, org, project, tenant_id="mysteryco", provider="openai",
+                  model="mystery-model", application="chat",
+                  at=now - timedelta(days=1), cost=None)
+        _mk_event(db, org, project, tenant_id="mysteryco", provider="openai",
+                  model="mystery-model", application="chat",
+                  at=now - timedelta(hours=1), cost=None)
+        db.flush()
+        return org, project
+
+    def test_unpriced_events_are_explicit_not_silent(self, db):
+        org, project = self._seed_unpriced_tenant(db)
+        rows = {r["tenant_external_id"]: r
+                for r in pnl_service.compute_pnl(db, org.id, project.id, days=30)}
+        assert rows["pricedco"]["ai_cost_usd"] == Decimal("42.00")
+        assert rows["pricedco"]["unpriced_events"] == 0
+        # Mystery Co's cost is unknown, not zero — the row says so explicitly.
+        assert rows["mysteryco"]["ai_cost_usd"] == Decimal("0")
+        assert rows["mysteryco"]["unpriced_events"] == 2
+
+    def test_pnl_endpoint_exposes_unpriced_events(self, client, committed):
+        from app.schemas import projects as project_schemas
+
+        body, headers = _signup(client)
+        project_id, org_id = body["project"]["id"], body["org"]["id"]
+        # Standalone session: pin the org's RLS context like the app does.
+        deps.set_rls_org(committed, uuid.UUID(org_id))
+        org = committed.query(m.Organization).filter_by(id=uuid.UUID(org_id)).one()
+        project = committed.query(m.Project).filter_by(id=uuid.UUID(project_id)).one()
+        self._seed_unpriced_tenant(committed, org, project)
+        committed.commit()
+
+        r = client.get(f"/api/v1/projects/{project_id}/pnl?days=30", headers=headers)
+        assert r.status_code == 200, r.text
+        parsed = project_schemas.ProjectPnLResponse(**r.json())
+        rows = {t.tenant_external_id: t for t in parsed.tenants}
+        assert rows["mysteryco"].ai_cost_usd == Decimal("0")
+        assert rows["mysteryco"].unpriced_events == 2
+        assert rows["pricedco"].unpriced_events == 0
+
+
 class TestDashboardEndpoint:
     def test_dashboard_round_trip_matches_service(self, client, committed):
         from app.schemas import projects as project_schemas
 
         body, headers = _signup(client)
         project_id, org_id = body["project"]["id"], body["org"]["id"]
+        # Standalone session: pin the org's RLS context like the app does.
+        deps.set_rls_org(committed, uuid.UUID(org_id))
         org = committed.query(m.Organization).filter_by(id=uuid.UUID(org_id)).one()
         project = committed.query(m.Project).filter_by(id=uuid.UUID(project_id)).one()
         _seed_events(committed, org, project)
@@ -353,6 +415,8 @@ class TestDashboardEndpoint:
         assert parsed.total_requests == 4
         assert parsed.unpriced_events == 1
         # Field-for-field agreement with the shared service.
+        # commit() drops the SET LOCAL RLS context, so re-pin first.
+        deps.set_rls_org(committed, uuid.UUID(org_id))
         svc = dashboard_service.compute_dashboard(
             committed, uuid.UUID(org_id), uuid.UUID(project_id), days=30)
         assert parsed.total_cost_usd == svc["total_cost_usd"]

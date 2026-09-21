@@ -264,8 +264,11 @@ def acknowledge_project_anomaly(project_id: str, anomaly_id: str,
     row = anomalies_service.acknowledge_anomaly(db, user.org_id, project.id, aid)
     if row is None:
         raise HTTPException(status_code=404, detail="anomaly not found")
-    db.commit()
+    # Query tenant names BEFORE commit: commit() drops the SET LOCAL
+    # app.org_id RLS context, and this lookup would silently return nothing
+    # under FORCE ROW LEVEL SECURITY afterwards.
     tenant_names = {t.external_id: t.name for t in
                     db.query(m.Tenant).filter_by(org_id=user.org_id,
                                                  project_id=project.id).all()}
+    db.commit()
     return schemas.AnomalyOut(**anomalies_service.anomaly_to_dict(row, tenant_names))

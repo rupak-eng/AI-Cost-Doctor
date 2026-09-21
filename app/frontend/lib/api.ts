@@ -94,6 +94,7 @@ export interface PnlTenant {
   name: string;
   revenue_usd: number;
   ai_cost_usd: number;
+  unpriced_events: number;
   margin_usd: number;
   status: "margin_killer" | "at_risk" | "healthy" | "unknown";
 }

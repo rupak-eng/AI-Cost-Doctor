@@ -15,6 +15,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app import models as m
+from app.api.v1 import deps
 from app.services import anomalies as anomalies_service
 from app.services.anomalies import (
     MARGIN_KILLER_EMERGENCE,
@@ -30,9 +31,13 @@ def _now() -> datetime:
 
 def _mk_org_project(db):
     slug = f"p6-{uuid.uuid4().hex[:10]}"
-    org = m.Organization(id=uuid.uuid4(), name="P6 Org", slug=slug)
-    db.add(org)
-    db.flush()
+    # Mirror signup: org row goes in under the pre-auth RLS bootstrap, then
+    # the session is pinned to the org exactly as the auth dependency does.
+    with deps.pre_auth_lookup(db):
+        org = m.Organization(id=uuid.uuid4(), name="P6 Org", slug=slug)
+        db.add(org)
+        db.flush()
+    deps.set_rls_org(db, org.id)
     user = m.User(id=uuid.uuid4(), org_id=org.id,
                   email=f"p6-{uuid.uuid4().hex[:8]}@x.io", password_hash="x")
     project = m.Project(id=uuid.uuid4(), org_id=org.id, name="P6 Project")
@@ -376,6 +381,9 @@ def _signup(client, org_name="P6 Org"):
 
 
 def _seed_spike_for_api(committed, org_id, project_id):
+    # The standalone session needs the org's RLS context, exactly as the
+    # authenticated request path sets it.
+    deps.set_rls_org(committed, org_id)
     org = committed.query(m.Organization).filter_by(id=org_id).one()
     project = committed.query(m.Project).filter_by(id=project_id).one()
     _mk_tenant(committed, org, project, "spike-co", "Spike Co", None)

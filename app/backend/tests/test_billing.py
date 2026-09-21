@@ -21,6 +21,7 @@ import pytest
 import stripe
 
 from app import models as m
+from app.api.v1 import deps
 from app.services import billing
 from app.services import stripe_client
 
@@ -40,6 +41,12 @@ def _signup(client, tag="b8"):
     body = r.json()
     return body, {"Authorization": f"Bearer {body['access_token']}"}, \
         body["project"]["id"], body["org"]["id"]
+
+
+def _pin(db, org_id):
+    """Pin the raw test session's RLS context to the org, mirroring the
+    authenticated request path. No-op on SQLite."""
+    deps.set_rls_org(db, uuid.UUID(str(org_id)))
 
 
 @pytest.fixture()
@@ -95,6 +102,9 @@ def _expire_trial(db_url, org_id):
     )
     try:
         with SASession(engine) as s:
+            # Pin the RLS context exactly as the authenticated app does;
+            # without it the org row is invisible under FORCE ROW LEVEL SECURITY.
+            deps.set_rls_org(s, uuid.UUID(str(org_id)))
             org = s.get(m.Organization, uuid.UUID(str(org_id)))
             org.trial_ends_at = datetime.now(timezone.utc) - timedelta(days=1)
             s.commit()
@@ -229,6 +239,7 @@ class TestWebhookLifecycle:
         r = _post_webhook(client, self._checkout_completed(org_id))
         assert r.status_code == 200, r.text
         assert r.json()["handled"] is True
+        _pin(db, org_id)
         org = db.get(m.Organization, uuid.UUID(str(org_id)))
         assert org.plan == "starter"
         assert org.subscription_status == "active"
@@ -256,6 +267,7 @@ class TestWebhookLifecycle:
             "items": {"data": [{"price": {"id": "price_growth_test"}}]}})
         r = _post_webhook(client, payload)
         assert r.status_code == 200, r.text
+        _pin(db, org_id)
         org = db.get(m.Organization, uuid.UUID(str(org_id)))
         assert org.plan == "growth"  # upgraded via portal
 
@@ -268,6 +280,7 @@ class TestWebhookLifecycle:
             "items": {"data": [{"price": {"id": "price_unknown_xyz"}}]}})
         r = _post_webhook(client, payload)
         assert r.status_code == 200, r.text
+        _pin(db, org_id)
         org = db.get(m.Organization, uuid.UUID(str(org_id)))
         assert org.plan == "starter"  # unchanged
         assert org.subscription_status == "active"
@@ -279,6 +292,7 @@ class TestWebhookLifecycle:
             "id": "sub_lc5", "object": "subscription", "customer": "cus_lc5"})
         r = _post_webhook(client, payload)
         assert r.status_code == 200, r.text
+        _pin(db, org_id)
         org = db.get(m.Organization, uuid.UUID(str(org_id)))
         assert org.subscription_status == "canceled"
         assert org.plan == "free"
@@ -291,6 +305,7 @@ class TestWebhookLifecycle:
             "subscription": "sub_lc6"})
         r = _post_webhook(client, payload)
         assert r.status_code == 200, r.text
+        _pin(db, org_id)
         org = db.get(m.Organization, uuid.UUID(str(org_id)))
         assert org.subscription_status == "past_due"
         # past_due keeps paid access (grace)
@@ -302,6 +317,7 @@ class TestWebhookLifecycle:
             "id": "sub_nope", "object": "subscription", "customer": "cus_nope"})
         r = _post_webhook(client, payload)
         assert r.status_code == 200  # Stripe retries 4xx/5xx; acknowledge instead
+        _pin(db, org_id)
         org = db.get(m.Organization, uuid.UUID(str(org_id)))
         assert org.plan == "free" and org.subscription_status is None
 
@@ -553,6 +569,7 @@ class TestBillingService:
 
     def test_monthly_event_count(self, client, db):
         _, _, project_id, org_id = _signup(client, "sv3")
+        _pin(db, org_id)
         now = datetime.now(timezone.utc)
         for i in range(3):
             db.add(m.UsageEvent(

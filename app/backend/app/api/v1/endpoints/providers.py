@@ -91,7 +91,11 @@ def connect_provider(body: schemas.ProviderConnectRequest,
         status="active")
     db.add(cred)
     db.commit()
-    db.refresh(cred)
+    # NOTE: no db.refresh(cred) here. commit() ends the transaction, which
+    # drops the SET LOCAL app.org_id RLS context; a refresh SELECT would come
+    # back empty under FORCE ROW LEVEL SECURITY and raise. All attributes
+    # _to_info() needs are populated in Python and expire_on_commit=False
+    # keeps them, so the refresh was pure overhead anyway.
     return _to_info(cred)
 
 

@@ -108,8 +108,11 @@ def _volume_vs_tokens(db: Session, org_id: uuid.UUID, project_id: uuid.UUID,
                       - volume_effect - token_effect).quantize(Decimal("0.01"))
 
     return {
-        "requests_delta_pct": round(requests_delta, 1),
-        "avg_tokens_per_request_delta_pct": round(tpr_delta, 1),
+        # Pct deltas are display fields declared as float in the schemas;
+        # coerce explicitly: on Postgres, sum() over integer columns comes
+        # back as Decimal while SQLite returns int.
+        "requests_delta_pct": float(round(requests_delta, 1)),
+        "avg_tokens_per_request_delta_pct": float(round(tpr_delta, 1)),
         "window_note": "last 7 days vs prior 23 days",
         "volume_effect_usd": volume_effect,
         "token_intensity_effect_usd": token_effect,

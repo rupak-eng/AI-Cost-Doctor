@@ -17,7 +17,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from sqlalchemy import func
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app import models as m
@@ -38,13 +38,18 @@ def tenant_status(margin_usd: Decimal | None, revenue_usd: Decimal | None) -> st
 
 
 def _tenant_costs(db: Session, org_id: uuid.UUID, project_id: uuid.UUID,
-                  start: datetime, end: datetime) -> dict[str, tuple[int, Decimal]]:
-    """{tenant_external_id: (requests, cost_usd)} over the window."""
+                  start: datetime, end: datetime) -> dict[str, tuple[int, Decimal, int]]:
+    """{tenant_external_id: (requests, cost_usd, unpriced_events)} over the window.
+
+    Unpriced events (NULL calculated cost) are counted per tenant so a tenant
+    whose cost is unknown is never silently presented as costing $0.
+    """
     rows = (
         db.query(
             m.UsageEvent.tenant_id,
             func.count(m.UsageEvent.id),
             func.sum(m.UsageEvent.cost_calculated_usd),
+            func.sum(case((m.UsageEvent.cost_calculated_usd.is_(None), 1), else_=0)),
         )
         .filter(
             m.UsageEvent.org_id == org_id,
@@ -55,7 +60,7 @@ def _tenant_costs(db: Session, org_id: uuid.UUID, project_id: uuid.UUID,
         .group_by(m.UsageEvent.tenant_id)
         .all()
     )
-    return {r[0]: (r[1], r[2] or Decimal(0)) for r in rows}
+    return {r[0]: (r[1], r[2] or Decimal(0), r[3] or 0) for r in rows}
 
 
 def _window(days: int, end: datetime | None = None) -> tuple[datetime, datetime]:
@@ -79,7 +84,7 @@ def compute_pnl_for_window(db: Session, org_id: uuid.UUID, project_id: uuid.UUID
     )
     rows = []
     for t in tenants:
-        _, cost = costs.get(t.external_id, (0, Decimal(0)))
+        _, cost, unpriced = costs.get(t.external_id, (0, Decimal(0), 0))
         revenue = t.monthly_revenue_usd  # None = unknown (e.g. auto-created via ingest)
         margin = (revenue - cost) if revenue is not None and revenue != 0 else None
         rows.append({
@@ -88,6 +93,7 @@ def compute_pnl_for_window(db: Session, org_id: uuid.UUID, project_id: uuid.UUID
             "name": t.name,
             "revenue_usd": revenue,
             "ai_cost_usd": cost,
+            "unpriced_events": unpriced,
             "margin_usd": margin,
             "status": tenant_status(margin, revenue),
         })
@@ -100,7 +106,7 @@ def compute_pnl(db: Session, org_id: uuid.UUID, project_id: uuid.UUID,
 
     Returns a list of dicts with keys:
       tenant_id, tenant_external_id, name, revenue_usd,
-      ai_cost_usd, margin_usd (None when revenue unknown), status.
+      ai_cost_usd, unpriced_events, margin_usd (None when revenue unknown), status.
     Tenants with no events in the window still appear (cost 0).
     """
     start, end = _window(days)

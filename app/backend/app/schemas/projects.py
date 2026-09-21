@@ -26,6 +26,7 @@ class ProjectPnLRow(BaseModel):
     name: str
     revenue_usd: Decimal | None
     ai_cost_usd: Decimal
+    unpriced_events: int = 0
     margin_usd: Decimal | None
     status: str = Field(pattern="^(margin_killer|at_risk|healthy|unknown)$")
 

@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from app import models as m
+from app.api.v1 import deps
 from app.services import investigate as inv
 from app.services import narrative
 from app.services.costing import load_catalog
@@ -29,9 +30,13 @@ def _now() -> datetime:
 
 def _mk_org_project(db, tag="p7"):
     slug = f"{tag}-{uuid.uuid4().hex[:10]}"
-    org = m.Organization(id=uuid.uuid4(), name=f"{tag} Org", slug=slug)
-    db.add(org)
-    db.flush()
+    # Mirror signup: org row goes in under the pre-auth RLS bootstrap, then
+    # the session is pinned to the org exactly as the auth dependency does.
+    with deps.pre_auth_lookup(db):
+        org = m.Organization(id=uuid.uuid4(), name=f"{tag} Org", slug=slug)
+        db.add(org)
+        db.flush()
+    deps.set_rls_org(db, org.id)
     project = m.Project(id=uuid.uuid4(), org_id=org.id, name=f"{tag} Project")
     db.add(project)
     db.flush()
@@ -108,6 +113,10 @@ class TestDriverAttribution:
         org_a, proj_a = _mk_org_project(db, tag="p7a")
         org_b, proj_b = _mk_org_project(db, tag="p7b")
         _mk_tenant(db, org_b, proj_b, "shared-ext", "Shared")
+        # Simulate org A's user: pin the RLS context to org A so the service
+        # must reject org B's tenant on its own org filter (RLS is the second
+        # layer, not the first).
+        deps.set_rls_org(db, org_a.id)
         try:
             inv.investigate_tenant(db, org_a.id, proj_a.id, "shared-ext", days=30)
             raise AssertionError("expected TenantNotFoundError")
@@ -289,6 +298,8 @@ class TestInvestigateApi:
         import os
         eng = create_engine(os.environ["DATABASE_URL"])
         s = sessionmaker(bind=eng)()
+        # Standalone session: pin the org's RLS context like the app does.
+        deps.set_rls_org(s, uuid.UUID(org_id))
         org = s.query(m.Organization).filter_by(id=uuid.UUID(org_id)).one()
         project = s.query(m.Project).filter_by(id=uuid.UUID(project_id)).one()
         _mk_tenant(s, org, project, "acme", "Acme", revenue="500")

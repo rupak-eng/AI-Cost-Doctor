@@ -64,6 +64,13 @@ function TenantCard({
           <dd className="mt-1 text-base font-bold tabular-nums text-slate-900 sm:text-lg">
             {formatUsd(tenant.ai_cost_usd)}
           </dd>
+          {tenant.unpriced_events > 0 && (
+            <dd className="mt-1 text-xs text-amber-700">
+              Excludes {tenant.unpriced_events.toLocaleString("en-US")} unpriced{" "}
+              {tenant.unpriced_events === 1 ? "event" : "events"} — cost unknown,
+              not $0.
+            </dd>
+          )}
         </div>
         <div className="min-w-0">
           <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
